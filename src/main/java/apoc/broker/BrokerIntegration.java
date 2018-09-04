@@ -28,6 +28,15 @@ public class BrokerIntegration
         return BrokerHandler.sendMessageToBrokerConnection( connectionName, message, configuration );
     }
 
+    @Procedure( mode = Mode.READ )
+    @Description( "Receive a message from the broker associated with the connectionName namespace. Takes in a configuration map which is dependent on the broker being used." )
+    public Stream<BrokerResponse> receive( @Name( "connectionName" ) String connectionName, @Name( "configuration" ) Map<String,Object> configuration )
+            throws IOException
+    {
+
+        return BrokerHandler.receiveMessageFromBrokerConnection( connectionName, configuration );
+    }
+
     public enum BrokerType
     {
         RABBITMQ,
@@ -54,6 +63,15 @@ public class BrokerIntegration
                 throw new IOException( "Broker Exception. Connection '" + connection + "' is not a configured broker connection." );
             }
             return (brokerConnections.get( connection )).send( message, configuration );
+        }
+
+        public static Stream<BrokerResponse> receiveMessageFromBrokerConnection( String connection, Map<String,Object> configuration ) throws IOException
+        {
+            if ( !brokerConnections.containsKey( connection ) )
+            {
+                throw new IOException( "Broker Exception. Connection '" + connection + "' is not a configured broker connection." );
+            }
+            return (brokerConnections.get( connection )).receive( configuration );
         }
     }
 

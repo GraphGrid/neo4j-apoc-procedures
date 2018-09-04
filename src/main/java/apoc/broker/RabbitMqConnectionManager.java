@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.GetResponse;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -90,6 +91,34 @@ public class RabbitMqConnectionManager
             }
 
             return Stream.of( new BrokerMessage( connectionName, message, configuration ) );
+        }
+
+        @Override
+        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
+        {
+            if ( !configuration.containsKey( "queueName" ) )
+            {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: 'queueName' in parameters missing" );
+            }
+
+            GetResponse message;
+            try
+            {
+                message = channel.basicGet( (String) configuration.get( "queueName" ), true );
+                if ( message == null )
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Message retrieved is null. Possibly no messages in the '" +
+                            configuration.get( "queueName" ) + "' queue." );
+                }
+            }
+            catch ( Exception e )
+            {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Exception when trying to get a message from the '" +
+                        configuration.get( "queueName" ) + "' queue." );
+                throw e;
+            }
+
+            return Stream.of( new BrokerResponse( connectionName, objectMapper.readValue( message.getBody(), Map.class ) ) );
         }
 
         @Override

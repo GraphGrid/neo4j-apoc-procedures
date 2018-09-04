@@ -78,6 +78,13 @@ public class SqsConnectionManager
         }
 
         @Override
+        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration )
+        {
+
+            return Stream.of( new BrokerResponse( connectionName, null ) );
+        }
+
+        @Override
         public void stop()
         {
             try
