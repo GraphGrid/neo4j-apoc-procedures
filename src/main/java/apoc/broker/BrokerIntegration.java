@@ -31,7 +31,8 @@ public class BrokerIntegration
     public enum BrokerType
     {
         RABBITMQ,
-        SQS
+        SQS,
+        KAFKA
     }
 
     public static class BrokerHandler
@@ -96,6 +97,10 @@ public class BrokerIntegration
                     case SQS:
                         brokerConnections.put( connectionName,
                                 SqsConnectionManager.addConnection( connectionName, log, ApocConfiguration.get( "broker." + connectionName ) ) );
+                        break;
+                    case KAFKA:
+                        brokerConnections.put( connectionName,
+                                KafkaConnectionManager.addConnection( connectionName, log, ApocConfiguration.get( "broker." + connectionName ) ) );
                         break;
                     default:
                         break;
