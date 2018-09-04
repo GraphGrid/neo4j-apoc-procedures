@@ -4,6 +4,9 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
+import com.amazonaws.services.sqs.model.DeleteMessageRequest;
+import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.amazonaws.services.sqs.model.ReceiveMessageResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.StringUtils;
@@ -78,10 +81,58 @@ public class SqsConnectionManager
         }
 
         @Override
-        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration )
+        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
         {
+            if ( !configuration.containsKey( "queueName" ) )
+            {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: 'queueName' in parameters missing" );
+            }
+            if ( !configuration.containsKey( "region" ) )
+            {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: 'region' in parameters missing" );
+            }
 
-            return Stream.of( new BrokerResponse( connectionName, null ) );
+            String queueName = (String) configuration.get( "queueName" );
+            String region = (String) configuration.get( "region" );
+
+            Map<String,Object> message = new HashMap<>();
+
+            if ( doesQueueExistInRegion( queueName, region ) )
+            {
+                try
+                {
+                    ReceiveMessageResult receiveMessageResult;
+                    receiveMessageResult = amazonSQS.receiveMessage( new ReceiveMessageRequest().withQueueUrl( queueName ) );
+                    if ( !receiveMessageResult.getMessages().isEmpty() )
+                    {
+                        // Get message and read it as a map.
+                        message = objectMapper.readValue( receiveMessageResult.getMessages().get( 0 ).getBody(), Map.class );
+
+                        // Ack and delete message after receiving it.
+                        final String messageReceiptHandle = receiveMessageResult.getMessages().get( 0 ).getReceiptHandle();
+                        amazonSQS.deleteMessage( new DeleteMessageRequest( queueName, messageReceiptHandle ) );
+                    }
+                    else
+                    {
+                        log.error( "Broker Exception. Connection Name: " + connectionName + ". No messages received from SQS queue '" + queueName +
+                                "' in region '" + region + "'." );
+                        message = null;
+                    }
+                }
+                catch ( Exception e )
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: " + e.toString() );
+                }
+            }
+            else
+            {
+                log.error(
+                        "Broker Exception. Connection Name: " + connectionName + ". Error: SQS queue '" + queueName + "' does not exist in region '" + region +
+                                "'." );
+                message = null;
+            }
+
+            return Stream.of( new BrokerResponse( connectionName, message ) );
         }
 
         @Override
