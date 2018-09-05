@@ -7,8 +7,12 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.GetResponse;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 import org.neo4j.logging.Log;
@@ -28,6 +32,8 @@ public class RabbitMqConnectionManager
         private Connection connection;
         private Channel channel;
         private static ObjectMapper objectMapper = new ObjectMapper();
+
+        private static final String maxPollRecordsDefault = "1";
 
         public RabbitMqConnection( Log log, String connectionName, Map<String,Object> configuration )
         {
@@ -94,31 +100,66 @@ public class RabbitMqConnectionManager
         }
 
         @Override
-        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
+        public Stream<BrokerResult> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
         {
             if ( !configuration.containsKey( "queueName" ) )
             {
                 log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: 'queueName' in parameters missing" );
             }
 
-            GetResponse message;
-            try
+            Long pollRecordsMax = Long.parseLong( maxPollRecordsDefault );
+            if ( this.configuration.containsKey( "poll.records.max" ) )
             {
-                message = channel.basicGet( (String) configuration.get( "queueName" ), true );
-                if ( message == null )
-                {
-                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Message retrieved is null. Possibly no messages in the '" +
-                            configuration.get( "queueName" ) + "' queue." );
-                }
+                pollRecordsMax = Long.parseLong( (String) this.configuration.get( "poll.records.max" ) );
             }
-            catch ( Exception e )
+            if ( configuration.containsKey( "pollRecordsMax" ) )
             {
-                log.error( "Broker Exception. Connection Name: " + connectionName + ". Exception when trying to get a message from the '" +
-                        configuration.get( "queueName" ) + "' queue." );
-                throw e;
+                pollRecordsMax = Long.parseLong( (String) configuration.get( "pollRecordsMax" ) );
             }
 
-            return Stream.of( new BrokerResponse( connectionName, objectMapper.readValue( message.getBody(), Map.class ) ) );
+            List<GetResponse> messageList = new ArrayList<>();
+            List<BrokerResult> messageMap = new ArrayList<>();
+
+            synchronized ( channel )
+            {
+                try
+                {
+                    if ( pollRecordsMax == 0L )
+                    {
+                        pollRecordsMax = channel.messageCount( (String) configuration.get( "queueName" ) );
+                    }
+
+                    for ( int i = 0; i < pollRecordsMax; i++ )
+                    {
+                        GetResponse message = channel.basicGet( (String) configuration.get( "queueName" ), false );
+                        if ( message == null )
+                        {
+                            log.error( "Broker Exception. Connection Name: " + connectionName + ". Message retrieved is null. Possibly no messages in the '" +
+                                    configuration.get( "queueName" ) + "' queue." );
+                            break;
+                        }
+                        messageList.add( message );
+                    }
+
+                    for ( GetResponse getResponse : messageList )
+                    {
+
+                        messageMap.add( new BrokerResult( connectionName, Long.toString( getResponse.getEnvelope().getDeliveryTag() ),
+                                objectMapper.readValue( getResponse.getBody(), Map.class ) ) );
+
+                        // Ack the message
+                        channel.basicAck( getResponse.getEnvelope().getDeliveryTag(), false );
+                    }
+                }
+                catch ( Exception e )
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Exception when trying to get a message from the '" +
+                            configuration.get( "queueName" ) + "' queue." );
+                    throw e;
+                }
+            }
+
+            return Arrays.stream( messageMap.toArray( new BrokerResult[messageMap.size()] ) );
         }
 
         @Override
@@ -132,6 +173,22 @@ public class RabbitMqConnectionManager
             catch ( Exception e )
             {
                 log.error( "Broker Exception. Failed to stop(). Connection Name: " + connectionName + ". Error: " + e.toString() );
+            }
+        }
+
+        private void createChannelIfClosed() throws IOException
+        {
+            if ( !channel.isOpen() )
+            {
+                channel = connection.createChannel();
+            }
+        }
+
+        private void createConnectionIfClosed() throws IOException, TimeoutException
+        {
+            if ( !connection.isOpen() )
+            {
+                this.connection = connectionFactory.newConnection();
             }
         }
     }

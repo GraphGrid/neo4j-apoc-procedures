@@ -5,6 +5,7 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
+import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
@@ -12,7 +13,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -34,6 +38,8 @@ public class SqsConnectionManager
 
         private static ObjectMapper objectMapper = new ObjectMapper();
 
+        private static final String maxPollRecordsDefault = "1";
+
         public SqsConnection( Log log, String connectionName, Map<String,Object> configuration )
         {
             this.log = log;
@@ -41,7 +47,7 @@ public class SqsConnectionManager
             this.configuration = configuration;
 
             amazonSQS = AmazonSQSClientBuilder.standard().withCredentials( new AWSStaticCredentialsProvider(
-                    new BasicAWSCredentials( (String) configuration.get( "username" ), (String) configuration.get( "password" ) ) ) ).build();
+                    new BasicAWSCredentials( (String) configuration.get( "access.key.id" ), (String) configuration.get( "secret.key.id" ) ) ) ).build();
         }
 
         @Override
@@ -81,8 +87,10 @@ public class SqsConnectionManager
         }
 
         @Override
-        public Stream<BrokerResponse> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
+        public Stream<BrokerResult> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
         {
+            List<BrokerResult> responseList = new ArrayList<>();
+
             if ( !configuration.containsKey( "queueName" ) )
             {
                 log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: 'queueName' in parameters missing" );
@@ -95,28 +103,46 @@ public class SqsConnectionManager
             String queueName = (String) configuration.get( "queueName" );
             String region = (String) configuration.get( "region" );
 
-            Map<String,Object> message = new HashMap<>();
+            Long pollRecordsMax = Long.parseLong( maxPollRecordsDefault );
+            if ( this.configuration.containsKey( "poll.records.max" ) )
+            {
+                pollRecordsMax = Long.parseLong( (String) this.configuration.get( "poll.records.max" ) );
+            }
+            if ( configuration.containsKey( "pollRecordsMax" ) )
+            {
+                pollRecordsMax = Long.parseLong( (String) configuration.get( "pollRecordsMax" ) );
+            }
+
+            if ( pollRecordsMax > 10 || pollRecordsMax < 1 )
+            {
+                log.error( "Broker Exception. pollRecordsMax for '" + connectionName + "' is either less than 1 or more than 10. Defaulting the value to " +
+                        maxPollRecordsDefault + "." );
+                pollRecordsMax = Long.parseLong( maxPollRecordsDefault );
+            }
 
             if ( doesQueueExistInRegion( queueName, region ) )
             {
                 try
                 {
-                    ReceiveMessageResult receiveMessageResult;
-                    receiveMessageResult = amazonSQS.receiveMessage( new ReceiveMessageRequest().withQueueUrl( queueName ) );
+                    ReceiveMessageResult receiveMessageResult = amazonSQS.receiveMessage(
+                            new ReceiveMessageRequest().withQueueUrl( queueName ).withMaxNumberOfMessages( pollRecordsMax.intValue() ) );
                     if ( !receiveMessageResult.getMessages().isEmpty() )
                     {
-                        // Get message and read it as a map.
-                        message = objectMapper.readValue( receiveMessageResult.getMessages().get( 0 ).getBody(), Map.class );
+                        for ( Message message : receiveMessageResult.getMessages() )
+                        {
+                            // Get message and read it as a map.
+                            responseList.add(
+                                    new BrokerResult( connectionName, message.getMessageId(), objectMapper.readValue( message.getBody(), Map.class ) ) );
 
-                        // Ack and delete message after receiving it.
-                        final String messageReceiptHandle = receiveMessageResult.getMessages().get( 0 ).getReceiptHandle();
-                        amazonSQS.deleteMessage( new DeleteMessageRequest( queueName, messageReceiptHandle ) );
+                            // Ack and delete message after receiving it.
+                            final String messageReceiptHandle = message.getReceiptHandle();
+                            amazonSQS.deleteMessage( new DeleteMessageRequest( queueName, messageReceiptHandle ) );
+                        }
                     }
                     else
                     {
                         log.error( "Broker Exception. Connection Name: " + connectionName + ". No messages received from SQS queue '" + queueName +
                                 "' in region '" + region + "'." );
-                        message = null;
                     }
                 }
                 catch ( Exception e )
@@ -129,10 +155,9 @@ public class SqsConnectionManager
                 log.error(
                         "Broker Exception. Connection Name: " + connectionName + ". Error: SQS queue '" + queueName + "' does not exist in region '" + region +
                                 "'." );
-                message = null;
             }
 
-            return Stream.of( new BrokerResponse( connectionName, message ) );
+            return Arrays.stream( responseList.toArray( new BrokerResult[responseList.size()] ) );
         }
 
         @Override

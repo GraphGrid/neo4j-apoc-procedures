@@ -2,6 +2,7 @@ package apoc.broker;
 
 import apoc.ApocConfiguration;
 import apoc.Description;
+import apoc.util.Util;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.IOException;
@@ -30,7 +31,7 @@ public class BrokerIntegration
 
     @Procedure( mode = Mode.READ )
     @Description( "Receive a message from the broker associated with the connectionName namespace. Takes in a configuration map which is dependent on the broker being used." )
-    public Stream<BrokerResponse> receive( @Name( "connectionName" ) String connectionName, @Name( "configuration" ) Map<String,Object> configuration )
+    public Stream<BrokerResult> receive( @Name( "connectionName" ) String connectionName, @Name( "configuration" ) Map<String,Object> configuration )
             throws IOException
     {
 
@@ -65,13 +66,13 @@ public class BrokerIntegration
             return (brokerConnections.get( connection )).send( message, configuration );
         }
 
-        public static Stream<BrokerResponse> receiveMessageFromBrokerConnection( String connection, Map<String,Object> configuration ) throws IOException
+        public static Stream<BrokerResult> receiveMessageFromBrokerConnection( String connection, Map<String,Object> configuration ) throws IOException
         {
             if ( !brokerConnections.containsKey( connection ) )
             {
                 throw new IOException( "Broker Exception. Connection '" + connection + "' is not a configured broker connection." );
             }
-            return (brokerConnections.get( connection )).receive( configuration );
+            return brokerConnections.get( connection ).receive( configuration );
         }
     }
 
@@ -146,6 +147,26 @@ public class BrokerIntegration
                 throw new RuntimeException( "No apoc.broker." + connectionName + " specified" );
             }
             return (String) value.get( key );
+        }
+    }
+
+    public static class BrokerStream
+    {
+        /**
+         * @param payload
+         * @return
+         */
+        protected String toPayload( Object payload )
+        {
+            if ( payload == null )
+            {
+                return null;
+            }
+            if ( payload instanceof Map )
+            {
+                return Util.toJson( payload );
+            }
+            return payload.toString();
         }
     }
 }
