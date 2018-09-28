@@ -36,6 +36,7 @@ public class Trigger {
         public Map<String, Object> params;
         public boolean installed;
         public boolean paused;
+        public boolean txDataPayload;
 
         public TriggerInfo(String name, String query, Map<String, Object> selector, boolean installed, boolean paused) {
             this.name = name;
@@ -53,6 +54,18 @@ public class Trigger {
             this.params = params;
             this.installed = installed;
             this.paused = paused;
+        }
+
+        public TriggerInfo( String name, String query, Map<String,Object> selector, Map<String,Object> params, boolean installed, boolean paused,
+                boolean txDataPayload )
+        {
+            this.name = name;
+            this.query = query;
+            this.selector = selector;
+            this.params = params;
+            this.installed = installed;
+            this.paused = paused;
+            this.txDataPayload = txDataPayload;
         }
     }
 
@@ -107,15 +120,15 @@ public class Trigger {
 
     @Procedure(mode = Mode.WRITE)
     @Description("add a trigger statement under a name, in the statement you can use {createdNodes}, {deletedNodes} etc., the selector is {phase:'before/after/rollback'} returns previous and new trigger information. Takes in an optional configuration.")
-    public Stream<TriggerInfo> add(@Name("name") String name, @Name("statement") String statement, @Name(value = "selector"/*, defaultValue = "{}"*/)  Map<String,Object> selector, @Name(value = "config", defaultValue = "{}") Map<String,Object> config) {
+    public Stream<TriggerInfo> add(@Name("name") String name, @Name("statement") String statement, @Name(value = "selector"/*, defaultValue = "{}"*/)  Map<String,Object> selector, @Name(value = "config", defaultValue = "{}") Map<String,Object> config, @Name(value = "txDataPayload", defaultValue = "false") boolean txDataPayload) {
         Map<String,Object> params = (Map)config.getOrDefault("params", Collections.emptyMap());
-        Map<String, Object> removed = TriggerHandler.add(name, statement, selector, params);
+        Map<String, Object> removed = TriggerHandler.add(name, statement, selector, params, txDataPayload);
         if (removed != null) {
             return Stream.of(
-                    new TriggerInfo(name,statement(removed), (Map<String, Object>) removed.get("selector"), (Map<String, Object>) removed.get("params"),false, false),
-                    new TriggerInfo(name,statement,selector, params,true, false));
+                    new TriggerInfo(name,statement(removed), (Map<String, Object>) removed.get("selector"), (Map<String, Object>) removed.get("params"),false, false, txDataPayload),
+                    new TriggerInfo(name,statement,selector, params,true, false, txDataPayload));
         }
-        return Stream.of(new TriggerInfo(name,statement,selector, params,true, false));
+        return Stream.of(new TriggerInfo(name,statement,selector, params,true, false,txDataPayload));
     }
 
     @Procedure(mode = Mode.WRITE)
@@ -125,7 +138,7 @@ public class Trigger {
         if (removed == null) {
             Stream.of(new TriggerInfo(name, null, null, false, false));
         }
-        return Stream.of(new TriggerInfo(name,statement(removed), (Map<String, Object>) removed.get("selector"), (Map<String, Object>) removed.get("params"),false, false));
+        return Stream.of(new TriggerInfo(name,statement(removed), (Map<String, Object>) removed.get("selector"), (Map<String, Object>) removed.get("params"),false, false, (boolean) removed.get("txDataPayload")));
     }
 
     @PerformsWrites
@@ -133,21 +146,21 @@ public class Trigger {
     @Description("list all installed triggers")
     public Stream<TriggerInfo> list() {
         return TriggerHandler.list().entrySet().stream()
-                .map( (e) -> new TriggerInfo(e.getKey(),statement(e.getValue()),(Map<String,Object>)e.getValue().get("selector"), (Map<String, Object>) e.getValue().get("params"),true, (Boolean) e.getValue().get("paused")));
+                .map( (e) -> new TriggerInfo(e.getKey(),statement(e.getValue()),(Map<String,Object>)e.getValue().get("selector"), (Map<String, Object>) e.getValue().get("params"),true, (Boolean) e.getValue().get("paused"), (boolean) e.getValue().get("txDataPayload")));
     }
 
     @Procedure(mode = Mode.WRITE)
     @Description("CALL apoc.trigger.pause(name) | it pauses the trigger")
     public Stream<TriggerInfo> pause(@Name("name")String name) {
         Map<String, Object> paused = TriggerHandler.paused(name);
-        return Stream.of(new TriggerInfo(name,statement(paused), (Map<String,Object>) paused.get("selector"), (Map<String,Object>) paused.get("params"),true, true));
+        return Stream.of(new TriggerInfo(name,statement(paused), (Map<String,Object>) paused.get("selector"), (Map<String,Object>) paused.get("params"),true, true, (boolean) paused.get("txDataPayload")));
     }
 
     @Procedure(mode = Mode.WRITE)
     @Description("CALL apoc.trigger.resume(name) | it resumes the paused trigger")
     public Stream<TriggerInfo> resume(@Name("name")String name) {
         Map<String, Object> resume = TriggerHandler.resume(name);
-        return Stream.of(new TriggerInfo(name,statement(resume), (Map<String,Object>) resume.get("selector"), (Map<String,Object>) resume.get("params"),true, false));
+        return Stream.of(new TriggerInfo(name,statement(resume), (Map<String,Object>) resume.get("selector"), (Map<String,Object>) resume.get("params"),true, false, (boolean) resume.get("txDataPayload")));
     }
 
     public static class TriggerHandler implements TransactionEventHandler {
@@ -162,11 +175,11 @@ public class Trigger {
         }
 
         public static Map<String, Object> add(String name, String statement, Map<String,Object> selector) {
-            return add(name, statement, selector, Collections.emptyMap());
+            return add(name, statement, selector, Collections.emptyMap(), false);
         }
 
-        public static Map<String, Object> add(String name, String statement, Map<String,Object> selector, Map<String,Object> params) {
-            return updateTriggers(name, map("statement", statement, "selector", selector, "params", params, "paused", false));
+        public static Map<String, Object> add(String name, String statement, Map<String,Object> selector, Map<String,Object> params, boolean txDataPayload) {
+            return updateTriggers(name, map("statement", statement, "selector", selector, "params", params, "paused", false, "txDataPayload", txDataPayload));
         }
         public synchronized static Map<String, Object> remove(String name) {
             return updateTriggers(name,null);
@@ -174,13 +187,13 @@ public class Trigger {
 
         public static Map<String, Object> paused(String name) {
             Map<String, Object> triggerToPause = triggers.get(name);
-            updateTriggers(name, map("statement", triggerToPause.get("statement"), "selector", triggerToPause.get("selector"), "params", triggerToPause.get("params"), "paused", true));
+            updateTriggers(name, map("statement", triggerToPause.get("statement"), "selector", triggerToPause.get("selector"), "params", triggerToPause.get("params"), "paused", true, "txDataPayload", triggerToPause.get( "txDataPayload" )));
             return triggers.get(name);
         }
 
         public static Map<String, Object> resume(String name) {
             Map<String, Object> triggerToResume = triggers.get(name);
-            updateTriggers(name, map("statement", triggerToResume.get("statement"), "selector", triggerToResume.get("selector"), "params", triggerToResume.get("params"), "paused", false));
+            updateTriggers(name, map("statement", triggerToResume.get("statement"), "selector", triggerToResume.get("selector"), "params", triggerToResume.get("params"), "paused", false, "txDataPayload", triggerToResume.get( "txDataPayload" )));
             return triggers.get(name);
         }
 
@@ -216,13 +229,16 @@ public class Trigger {
             if (triggers.containsKey("")) updateTriggers(null,null);
             GraphDatabaseService db = properties.getGraphDatabase();
             Map<String,String> exceptions = new LinkedHashMap<>();
-            Map<String, Object> params = txDataParams(txData, phase);
+            Map<String, Object> paramsAsIndividual = txDataParams(txData, phase, false);
+            Map<String, Object> paramsAsPayload = txDataParams(txData, phase, true);
             triggers.forEach((name, data) -> {
+                Map<String,Object> params = ((boolean) data.get( "txDataPayload" )) ?  paramsAsPayload : paramsAsIndividual;
                 if( data.get("paused").equals(false)) {
                     if( data.get( "params" ) != null)
                     {
                         params.putAll( (Map<String,Object>) data.get( "params" ) );
                     }
+
                     try (Transaction tx = db.beginTx()) {
                         Map<String,Object> selector = (Map<String, Object>) data.get("selector");
                         if (when(selector, phase)) {
@@ -260,8 +276,9 @@ public class Trigger {
 
     }
 
-    private static Map<String, Object> txDataParams(TransactionData txData, String phase) {
-        return map("transactionId", phase.equals("after") ? txData.getTransactionId() : -1,
+    private static Map<String, Object> txDataParams(TransactionData txData, String phase, boolean txDataPayload) {
+        Map<String,Object> txMap
+                = map("transactionId", phase.equals("after") ? txData.getTransactionId() : -1,
                         "commitTime", phase.equals("after") ? txData.getCommitTime() : -1,
                         "createdNodes", txData.createdNodes(),
                         "createdRelationships", txData.createdRelationships(),
@@ -273,6 +290,11 @@ public class Trigger {
                         "assignedLabels", aggregateLabels(txData.assignedLabels()),
                         "assignedNodeProperties",aggregatePropertyKeys(txData.assignedNodeProperties(),true,false),
                         "assignedRelationshipProperties",aggregatePropertyKeys(txData.assignedRelationshipProperties(),false,false));
+        if (txDataPayload)
+        {
+            return map( "txData", txMap);
+        }
+        return txMap;
     }
 
     private static <T extends PropertyContainer> Map<String,List<Map<String,Object>>> aggregatePropertyKeys(Iterable<PropertyEntry<T>> entries, boolean nodes, boolean removed) {
