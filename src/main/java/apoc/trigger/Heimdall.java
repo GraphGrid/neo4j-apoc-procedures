@@ -4,11 +4,12 @@ import apoc.ApocConfiguration;
 import apoc.Description;
 import apoc.coll.SetBackedList;
 import apoc.util.Util;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.neo4j.graphdb.GraphDatabaseService;
 import org.neo4j.graphdb.Label;
 import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.PropertyContainer;
-import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Result;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.graphdb.event.LabelEntry;
@@ -28,7 +29,6 @@ import org.neo4j.procedure.Procedure;
 import org.neo4j.procedure.UserFunction;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -45,14 +45,14 @@ import static apoc.util.Util.map;
 public class Heimdall
 {
 
-    private List<NodeChange> nodeChanges = new ArrayList<>();
+//    protected List<NodeChange> nodeChanges = new ArrayList<>();
 
-    private List<PropertyChange> propertyChanges = new ArrayList<>();
-
-    private List<LabelChange> labelChanges = new ArrayList<>();
-
-    private List<RelationshipChange> relationshipChanges = new ArrayList<>();
-
+//    private List<PropertyChange> propertyChanges = new ArrayList<>();
+//
+//    private List<LabelChange> labelChanges = new ArrayList<>();
+//
+//    private List<RelationshipChange> relationshipChanges = new ArrayList<>();
+//
 
     public static class TriggerInfo {
         public String name;
@@ -97,7 +97,7 @@ public class Heimdall
     @Context
     public GraphDatabaseService db;
 
-    @UserFunction
+    @UserFunction(value = "apoc.heimdall.nodesByLabel")
     @Description("function to filter labelEntries by label, to be used within a trigger statement with {assignedLabels}, {removedLabels}, {assigned/removedNodeProperties}")
     public List<Node> nodesByLabel(@Name("labelEntries") Object entries, @Name("label") String labelString) {
         if (!(entries instanceof Map)) return Collections.emptyList();
@@ -134,7 +134,7 @@ public class Heimdall
         return Collections.emptyList();
     }
 
-    @UserFunction
+    @UserFunction(value = "apoc.heimdall.propertiesByKey")
     @Description("function to filter propertyEntries by property-key, to be used within a trigger statement with {assignedNode/RelationshipProperties} and {removedNode/RelationshipProperties}. Returns [{old,new,key,node,relationship}]")
     public List<Map<String,Object>> propertiesByKey(@Name("propertyEntries") Map<String,List<Map<String,Object>>> propertyEntries, @Name("key") String key) {
         return propertyEntries.getOrDefault(key,Collections.emptyList());
@@ -144,7 +144,7 @@ public class Heimdall
         return (String)map.getOrDefault("statement",map.get("kernelTransaction"));
     }
 
-    @Procedure(mode = Mode.WRITE)
+    @Procedure(mode = Mode.WRITE, value = "apoc.heimdall.add")
     @Description("add a trigger statement under a name, in the statement you can use {createdNodes}, {deletedNodes} etc., the selector is {phase:'before/after/rollback'} returns previous and new trigger information. Takes in an optional configuration.")
     public Stream<Trigger.TriggerInfo> add(@Name("name") String name, @Name("statement") String statement, @Name(value = "selector"/*, defaultValue = "{}"*/)  Map<String,Object> selector, @Name(value = "config", defaultValue = "{}") Map<String,Object> config, @Name(value = "txDataPayload", defaultValue = "false") boolean txDataPayload) {
         Map<String,Object> params = (Map)config.getOrDefault("params", Collections.emptyMap());
@@ -157,7 +157,7 @@ public class Heimdall
         return Stream.of(new Trigger.TriggerInfo(name,statement,selector, params,true, false,txDataPayload));
     }
 
-    @Procedure(mode = Mode.WRITE)
+    @Procedure(mode = Mode.WRITE, value = "apoc.heimdall.remove")
     @Description("remove previously added trigger, returns trigger information")
     public Stream<Trigger.TriggerInfo> remove(@Name("name")String name) {
         Map<String, Object> removed = Trigger.TriggerHandler.remove(name);
@@ -168,34 +168,34 @@ public class Heimdall
     }
 
     @PerformsWrites
-    @Procedure
+    @Procedure(value = "apoc.heimdall.list")
     @Description("list all installed triggers")
     public Stream<Trigger.TriggerInfo> list() {
         return Trigger.TriggerHandler.list().entrySet().stream()
                 .map( (e) -> new Trigger.TriggerInfo(e.getKey(),statement(e.getValue()),(Map<String,Object>)e.getValue().get("selector"), (Map<String, Object>) e.getValue().get("params"),true, (Boolean) e.getValue().get("paused"), (boolean) e.getValue().get("txDataPayload")));
     }
 
-    @Procedure(mode = Mode.WRITE)
+    @Procedure(mode = Mode.WRITE, value = "apoc.heimdall.pause")
     @Description("CALL apoc.trigger.pause(name) | it pauses the trigger")
     public Stream<Trigger.TriggerInfo> pause(@Name("name")String name) {
         Map<String, Object> paused = Trigger.TriggerHandler.paused(name);
         return Stream.of(new Trigger.TriggerInfo(name,statement(paused), (Map<String,Object>) paused.get("selector"), (Map<String,Object>) paused.get("params"),true, true, (boolean) paused.get("txDataPayload")));
     }
 
-    @Procedure(mode = Mode.WRITE)
+    @Procedure(mode = Mode.WRITE, value = "apoc.heimdall.resume")
     @Description("CALL apoc.trigger.resume(name) | it resumes the paused trigger")
     public Stream<Trigger.TriggerInfo> resume(@Name("name")String name) {
         Map<String, Object> resume = Trigger.TriggerHandler.resume(name);
         return Stream.of(new Trigger.TriggerInfo(name,statement(resume), (Map<String,Object>) resume.get("selector"), (Map<String,Object>) resume.get("params"),true, false, (boolean) resume.get("txDataPayload")));
     }
 
-    public static class TriggerHandler implements TransactionEventHandler
+    public static class HeimdallHandler implements TransactionEventHandler
     {
-        public static final String APOC_TRIGGER = "apoc.trigger";
+        public static final String APOC_HEIMDALL = "apoc.heimdall";
         static ConcurrentHashMap<String,Map<String,Object>> triggers = new ConcurrentHashMap(map("",map()));
         private static GraphProperties properties;
         private final Log log;
-        public TriggerHandler( GraphDatabaseAPI api, Log log) {
+        public HeimdallHandler( GraphDatabaseAPI api, Log log) {
             properties = api.getDependencyResolver().resolveDependency( NodeManager.class).newGraphProperties();
 //            Pools.SCHEDULED.submit(() -> updateTriggers(null,null));
             this.log = log;
@@ -227,13 +227,13 @@ public class Heimdall
         private synchronized static Map<String, Object> updateTriggers(String name, Map<String, Object> value) {
             try ( Transaction tx = properties.getGraphDatabase().beginTx()) {
                 triggers.clear();
-                String triggerProperty = (String) properties.getProperty(APOC_TRIGGER, "{}");
+                String triggerProperty = (String) properties.getProperty(APOC_HEIMDALL, "{}");
                 triggers.putAll( Util.fromJson(triggerProperty,Map.class));
                 Map<String,Object> previous = null;
                 if (name != null) {
                     previous = (value == null) ? triggers.remove(name) : triggers.put(name, value);
                     if (value != null || previous != null) {
-                        properties.setProperty(APOC_TRIGGER, Util.toJson(triggers));
+                        properties.setProperty(APOC_HEIMDALL, Util.toJson(triggers));
                     }
                 }
                 tx.success();
@@ -256,10 +256,8 @@ public class Heimdall
             if (triggers.containsKey("")) updateTriggers(null,null);
             GraphDatabaseService db = properties.getGraphDatabase();
             Map<String,String> exceptions = new LinkedHashMap<>();
-            Map<String, Object> paramsAsIndividual = txDataParams(txData, phase, false);
-            Map<String, Object> paramsAsPayload = txDataParams(txData, phase, true);
+            Map<String, Object> params = txDataParams(txData, phase, false);
             triggers.forEach((name, data) -> {
-                Map<String,Object> params = ((boolean) data.get( "txDataPayload" )) ?  paramsAsPayload : paramsAsIndividual;
                 if( data.get("paused").equals(false)) {
                     if( data.get( "params" ) != null)
                     {
@@ -304,10 +302,22 @@ public class Heimdall
     }
 
     private static Map<String, Object> txDataParams(TransactionData txData, String phase, boolean txDataPayload) {
+        List<NodeChange> nodeChanges = new ArrayList<>();
+
+        List<PropertyChange> propertyChanges = new ArrayList<>();
+
+        List<LabelChange> labelChanges = new ArrayList<>();
+
+        List<RelationshipChange> relationshipChanges = new ArrayList<>();
+
+
+        nodeChanges = getNodeChanges(txData.createdNodes(), ActionType.added, "1");
+
         Map<String,Object> txMap
                 = map("transactionId", phase.equals("after") ? txData.getTransactionId() : -1,
                 "commitTime", phase.equals("after") ? txData.getCommitTime() : -1,
-                "createdNodes", txData.createdNodes(),
+//                "createdNodes", txData.createdNodes(),
+                "createdNodes", nodeChanges,
                 "createdRelationships", txData.createdRelationships(),
                 "deletedNodes", txData.deletedNodes(),
                 "deletedRelationships", txData.deletedRelationships(),
@@ -317,11 +327,8 @@ public class Heimdall
                 "assignedLabels", aggregateLabels(txData.assignedLabels()),
                 "assignedNodeProperties",aggregatePropertyKeys(txData.assignedNodeProperties(),true,false),
                 "assignedRelationshipProperties",aggregatePropertyKeys(txData.assignedRelationshipProperties(),false,false));
-        if (txDataPayload)
-        {
-            return map( "txData", txMap);
-        }
-        return txMap;
+        return map( "txData", txMap);
+
     }
 
     private static <T extends PropertyContainer> Map<String,List<Map<String,Object>>> aggregatePropertyKeys(Iterable<PropertyEntry<T>> entries, boolean nodes, boolean removed) {
@@ -357,7 +364,7 @@ public class Heimdall
     public static class LifeCycle {
         private final GraphDatabaseAPI db;
         private final Log log;
-        private Trigger.TriggerHandler triggerHandler;
+        private Heimdall.HeimdallHandler heimdallHandler;
 
         public LifeCycle(GraphDatabaseAPI db, Log log) {
             this.db = db;
@@ -367,14 +374,15 @@ public class Heimdall
         public void start() {
             boolean enabled = Util.toBoolean( ApocConfiguration.get("trigger.enabled", null));
             if (!enabled) return;
-            triggerHandler = new Trigger.TriggerHandler(db,log);
-            db.registerTransactionEventHandler(triggerHandler);
+            heimdallHandler = new Heimdall.HeimdallHandler( db,log);
+            db.registerTransactionEventHandler(heimdallHandler);
         }
 
         public void stop() {
-            if (triggerHandler == null) return;
-            db.unregisterTransactionEventHandler(triggerHandler);
+            if (heimdallHandler== null) return;
+            db.unregisterTransactionEventHandler(heimdallHandler);
         }
+
     }
 
     public static class TransactionDataMap
@@ -405,10 +413,6 @@ public class Heimdall
 
         }
 
-        public static class PropertyChange {
-
-        }
-
     }
 
 //
@@ -432,168 +436,13 @@ public class Heimdall
 //
 //        return result;
 //    }
-//
-//    private void addNodeChanges(Iterable<Node> nodeIter, Map<Long,String> nodeIdToGrn, ActionType actionType)
-//    {
-//        for ( Node node : nodeIter)
-//        {
-//            if (actionType == ActionType.added)
-//            {
-//                this.validateAndHandleNode( node );
-//                NodeChange nodeChange = new NodeChange( node.getProperty( idKey ).toString(), actionType );
-//                nodeChanges.add( nodeChange );
-//            }
-//            else
-//            {
-//                long id = node.getId();
-//                String grn = nodeIdToGrn.get(id);
-//                if (grn==null)
-//                {
-//                    continue;
-//                }
-//                NodeChange nodeChange = new NodeChange(grn, actionType );
-//                nodeChanges.add( nodeChange );
-//            }
-//        }
-//    }
-//
-//    private void addLabelChanges(Iterable<LabelEntry> nodeIter, Map<Long,String> nodeIdToGrn, ActionType actionType)
-//    {
-//        for ( LabelEntry label : nodeIter)
-//        {
-//            // SKIP GRAPH RESOURCE
-//            if (label.label().name().equals( "GraphResource" ))
-//            {
-//                continue;
-//            }
-//
-//            if (actionType.equals( ActionType.added ))
-//            {
-//                this.validateAndHandleNode( label.node() );
-//                LabelChange labelChange =
-//                        new LabelChange( label.node().getProperty( idKey ).toString(), label.label().name(), actionType );
-//                labelChanges.add( labelChange );
-//            }
-//            else
-//            {
-//                long nodeId = label.node().getId();
-//                String grn = nodeIdToGrn.get(nodeId);
-//                try
-//                {
-//                    grn = label.node().getProperty( idKey ).toString();
-//                }catch (Exception e )
-//                {
-//                    // Do nothing
-//                }
-//                if (grn==null)
-//                {
-//                    continue;
-//                }
-//                LabelChange labelChange =
-//                        new LabelChange(grn, label.label().name(), actionType );
-//                labelChanges.add( labelChange );
-//            }
-//        }
-//    }
-//
-//    private void addRelationshipChanges(Iterable<Relationship> relIter, Map<Long,String> nodeIdToGrn,
-//            Map<Long,String> relIdToGrn,
-//            ActionType actionType)
-//    {
-//        for ( Relationship rel : relIter)
-//        {
-//            Node startNode = rel.getStartNode();
-//            Node endNode = rel.getEndNode();
-//            if (ActionType.added == actionType)
-//            {
-//                this.validateAndHandleRelationship(startNode, endNode, rel);
-//            }
-//            long startNodeId = startNode.getId();
-//            long endNodeId = endNode.getId();
-//            long relId = rel.getId();
-//            String startGrn = "";
-//            try
-//            {
-//                startGrn = startNode.getProperty( idKey ).toString();
-//            }
-//            catch ( Exception e )
-//            {
-//                startGrn = nodeIdToGrn.get( startNodeId );
-//            }
-//            String endGrn = "";
-//            try
-//            {
-//                endGrn = endNode.getProperty( idKey ).toString();
-//            }catch ( Exception e )
-//            {
-//                endGrn = nodeIdToGrn.get( endNodeId );
-//            }
-//            String relGrn = "";
-//            try
-//            {
-//                relGrn = rel.getProperty( idKey ).toString();
-//            }catch ( Exception e )
-//            {
-//                relGrn = relIdToGrn.get(relId);
-//            }
-//            String relType = rel.getType().name();
-//            boolean cond1 = endGrn == null;
-//            boolean cond2 = relGrn == null;
-//            boolean cond3 = startGrn == null;
-//            boolean cond4 = relType == null;
-//            if (cond1||cond2||cond3||cond4)
-//            {
-//                continue;
-//            }
-//            RelationshipChange relChange = new RelationshipChange(startGrn,
-//                    endGrn,
-//                    relType,
-//                    actionType);
-//            relationshipChanges.add( relChange );
-//        }
-//    }
-//
-//    public static class RelationshipChange
-//    {
-//
-//        private String grnOfStartNode;
-//
-//        private String grnOfEndNode;
-//
-//        private String type;
-//
-//        private ActionType action;
-//
-//        RelationshipChange(String grnOfStartNode, String grnOfEndNode, String type,
-//                ActionType action)
-//        {
-//            this.grnOfStartNode = grnOfStartNode;
-//            this.grnOfEndNode = grnOfEndNode;
-//            this.type = type;
-//            this.action = action;
-//        }
-//
-//        public String getGrnOfStartNode()
-//        {
-//            return grnOfStartNode;
-//        }
-//
-//        public String getGrnOfEndNode()
-//        {
-//            return grnOfEndNode;
-//        }
-//
-//        public ActionType getAction()
-//        {
-//            return action;
-//        }
-//    }
-//
+
     public enum ActionType
     {
         removed,
         added
     }
+
 
     public static final String NODES_ADDED = "Nodes_Added";
     public static final String NODES_REMOVED = "Nodes_Removed";
@@ -637,22 +486,24 @@ public class Heimdall
         }
     }
 
+    @JsonAutoDetect
+    @JsonIgnoreProperties( ignoreUnknown = true )
     public static class NodeChange
     {
 
-        private String grn;
+        private String id;
 
         private ActionType action;
 
-        public NodeChange( String grn, ActionType action )
+        public NodeChange( String id, ActionType action )
         {
             this.action = action;
-            this.grn = grn;
+            this.id = id;
         }
 
-        public String getGrn()
+        public String getId()
         {
-            return grn;
+            return id;
         }
 
         public ActionType getAction()
@@ -663,7 +514,7 @@ public class Heimdall
         @Override
         public String toString()
         {
-            return this.grn;
+            return this.id;
         }
     }
 
@@ -759,6 +610,8 @@ public class Heimdall
         }
     }
 
+    @JsonAutoDetect
+    @JsonIgnoreProperties( ignoreUnknown = true )
     public static class RelationshipChange
     {
 
@@ -851,120 +704,114 @@ public class Heimdall
         }
     }
 
-    private void addNodeChanges(Iterable<Node> nodeIter, Map<Long,String> nodeIdToGrn, ActionType actionType, String idKey)
+    public static List<NodeChange> getNodeChanges( Iterable<Node> nodeIter, ActionType actionType, String idKey )
     {
-        for ( Node node : nodeIter)
+        List<NodeChange> temp = new ArrayList<>();
+        for ( Node node : nodeIter )
         {
-            if (actionType == ActionType.added)
+            if ( actionType == ActionType.added )
             {
-                NodeChange nodeChange = new NodeChange( node.getProperty( idKey ).toString(), actionType );
-                nodeChanges.add( nodeChange );
+                temp.add( new NodeChange( node.getProperty( idKey ).toString(), actionType ) );
             }
             else
             {
-                long id = node.getId();
-                String grn = nodeIdToGrn.get(id);
-                if (grn==null)
-                {
-                    continue;
-                }
-                NodeChange nodeChange = new NodeChange(grn, actionType );
-                nodeChanges.add( nodeChange );
+                temp.add( new NodeChange( Long.toString( node.getId() ), actionType ) );
             }
         }
+        return temp;
     }
-
-    private void addLabelChanges(Iterable<LabelEntry> nodeIter, Map<Long,String> nodeIdToGrn, ActionType actionType, String idKey)
-    {
-        for ( LabelEntry label : nodeIter)
-        {
-            // SKIP GRAPH RESOURCE
-            if (label.label().name().equals( "GraphResource" ))
-            {
-                continue;
-            }
-
-            if (actionType.equals( ActionType.added ))
-            {
-                LabelChange labelChange =
-                        new LabelChange( label.node().getProperty( idKey ).toString(), label.label().name(), actionType );
-                labelChanges.add( labelChange );
-            }
-            else
-            {
-                long nodeId = label.node().getId();
-                String grn = nodeIdToGrn.get(nodeId);
-                try
-                {
-                    grn = label.node().getProperty( idKey ).toString();
-                }catch (Exception e )
-                {
-                    // Do nothing
-                }
-                if (grn==null)
-                {
-                    continue;
-                }
-                LabelChange labelChange =
-                        new LabelChange(grn, label.label().name(), actionType );
-                labelChanges.add( labelChange );
-            }
-        }
-    }
-
-    private void addRelationshipChanges(Iterable<Relationship> relIter, Map<Long,String> nodeIdToGrn,
-            Map<Long,String> relIdToGrn,
-            ActionType actionType, String idKey)
-    {
-        for ( Relationship rel : relIter)
-        {
-            Node startNode = rel.getStartNode();
-            Node endNode = rel.getEndNode();
-            long startNodeId = startNode.getId();
-            long endNodeId = endNode.getId();
-            long relId = rel.getId();
-            String startGrn = "";
-            try
-            {
-                startGrn = startNode.getProperty( idKey ).toString();
-            }
-            catch ( Exception e )
-            {
-                startGrn = nodeIdToGrn.get( startNodeId );
-            }
-            String endGrn = "";
-            try
-            {
-                endGrn = endNode.getProperty( idKey ).toString();
-            }catch ( Exception e )
-            {
-                endGrn = nodeIdToGrn.get( endNodeId );
-            }
-            String relGrn = "";
-            try
-            {
-                relGrn = rel.getProperty( idKey ).toString();
-            }catch ( Exception e )
-            {
-                relGrn = relIdToGrn.get(relId);
-            }
-            String relType = rel.getType().name();
-            boolean cond1 = endGrn == null;
-            boolean cond2 = relGrn == null;
-            boolean cond3 = startGrn == null;
-            boolean cond4 = relType == null;
-            if (cond1||cond2||cond3||cond4)
-            {
-                continue;
-            }
-            RelationshipChange relChange = new RelationshipChange(startGrn,
-                    endGrn,
-                    relType,
-                    relGrn,
-                    actionType);
-            relationshipChanges.add( relChange );
-        }
-    }
+//
+//    public void addLabelChanges(Iterable<LabelEntry> nodeIter, Map<Long,String> nodeIdToGrn, ActionType actionType, String idKey)
+//    {
+//        for ( LabelEntry label : nodeIter)
+//        {
+//            // SKIP GRAPH RESOURCE
+//            if (label.label().name().equals( "GraphResource" ))
+//            {
+//                continue;
+//            }
+//
+//            if (actionType.equals( ActionType.added ))
+//            {
+//                LabelChange labelChange =
+//                        new LabelChange( label.node().getProperty( idKey ).toString(), label.label().name(), actionType );
+//                labelChanges.add( labelChange );
+//            }
+//            else
+//            {
+//                long nodeId = label.node().getId();
+//                String grn = nodeIdToGrn.get(nodeId);
+//                try
+//                {
+//                    grn = label.node().getProperty( idKey ).toString();
+//                }catch (Exception e )
+//                {
+//                    // Do nothing
+//                }
+//                if (grn==null)
+//                {
+//                    continue;
+//                }
+//                LabelChange labelChange =
+//                        new LabelChange(grn, label.label().name(), actionType );
+//                labelChanges.add( labelChange );
+//            }
+//        }
+//    }
+//
+//    public void addRelationshipChanges(Iterable<Relationship> relIter, Map<Long,String> nodeIdToGrn,
+//            Map<Long,String> relIdToGrn,
+//            ActionType actionType, String idKey)
+//    {
+//        for ( Relationship rel : relIter)
+//        {
+//            Node startNode = rel.getStartNode();
+//            Node endNode = rel.getEndNode();
+//            long startNodeId = startNode.getId();
+//            long endNodeId = endNode.getId();
+//            long relId = rel.getId();
+//            String startGrn = "";
+//            try
+//            {
+//                startGrn = startNode.getProperty( idKey ).toString();
+//            }
+//            catch ( Exception e )
+//            {
+//                startGrn = nodeIdToGrn.get( startNodeId );
+//            }
+//            String endGrn = "";
+//            try
+//            {
+//                endGrn = endNode.getProperty( idKey ).toString();
+//            }catch ( Exception e )
+//            {
+//                endGrn = nodeIdToGrn.get( endNodeId );
+//            }
+//            String relGrn = "";
+//            try
+//            {
+//                relGrn = rel.getProperty( idKey ).toString();
+//            }catch ( Exception e )
+//            {
+//                relGrn = relIdToGrn.get(relId);
+//            }
+//            String relType = rel.getType().name();
+//            boolean cond1 = endGrn == null;
+//            boolean cond2 = relGrn == null;
+//            boolean cond3 = startGrn == null;
+//            boolean cond4 = relType == null;
+//            if (cond1||cond2||cond3||cond4)
+//            {
+//                continue;
+//            }
+//            RelationshipChange relChange = new RelationshipChange(startGrn,
+//                    endGrn,
+//                    relType,
+//                    relGrn,
+//                    actionType);
+//            relationshipChanges.add( relChange );
+//        }
+//    }
 
 
 
