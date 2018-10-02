@@ -5,11 +5,8 @@ import apoc.Pools;
 import apoc.export.util.CountingInputStream;
 import apoc.path.RelationshipTypeAndDirections;
 import org.apache.commons.io.IOUtils;
-<<<<<<< HEAD
 import org.apache.commons.lang.StringUtils;
-=======
 import apoc.result.MapResult;
->>>>>>> da0832f... fixes #921: Updated apoc.cypher.doIt with config map and retry feature.
 import org.neo4j.collection.primitive.PrimitiveLongIterator;
 import org.neo4j.graphdb.*;
 import org.neo4j.graphdb.Node;
@@ -26,15 +23,13 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.*;
 import java.util.*;
-<<<<<<< HEAD
-import java.util.concurrent.*;
-=======
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
->>>>>>> da0832f... fixes #921: Updated apoc.cypher.doIt with config map and retry feature.
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
@@ -700,7 +695,7 @@ public class Util {
         }
     }
 
-    public static <T> void put(BlockingQueue<T> queue, T item, long timeoutSeconds) {
+    public static <T> void put( BlockingQueue<T> queue, T item, long timeoutSeconds) {
         try {
             boolean success = queue.offer(item, timeoutSeconds, TimeUnit.SECONDS);
             if (!success)
