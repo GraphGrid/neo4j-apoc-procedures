@@ -21,6 +21,20 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
+import static apoc.trigger.TransactionDataMap.assignedLabelMap;
+import static apoc.trigger.TransactionDataMap.assignedNodePropertyMap;
+import static apoc.trigger.TransactionDataMap.assignedNodePropertyMapByKey;
+import static apoc.trigger.TransactionDataMap.assignedNodePropertyMapByLabel;
+import static apoc.trigger.TransactionDataMap.assignedRelationshipPropertyMap;
+import static apoc.trigger.TransactionDataMap.createdNodeMap;
+import static apoc.trigger.TransactionDataMap.createdRelationshipsMap;
+import static apoc.trigger.TransactionDataMap.deletedNodeMap;
+import static apoc.trigger.TransactionDataMap.deletedRelationshipsMap;
+import static apoc.trigger.TransactionDataMap.removedLabelMap;
+import static apoc.trigger.TransactionDataMap.removedNodePropertyMap;
+import static apoc.trigger.TransactionDataMap.removedNodePropertyMapByKey;
+import static apoc.trigger.TransactionDataMap.removedNodePropertyMapByLabel;
+import static apoc.trigger.TransactionDataMap.removedRelationshipPropertyMap;
 import static apoc.util.Util.map;
 
 /**
@@ -215,9 +229,10 @@ public class Trigger {
             if (triggers.containsKey("")) updateTriggers(null,null);
             GraphDatabaseService db = properties.getGraphDatabase();
             Map<String,String> exceptions = new LinkedHashMap<>();
-            Map<String, Object> params = txDataParams(txData, phase);
             triggers.forEach((name, data) -> {
+                Map<String, Object> params = txDataParams(txData, phase);
                 if( data.get("paused").equals(false)) {
+                    params.putAll( txDataCollector( txData, phase, (Map<String,Object>) data.get( "config" ) ) );
                     if( ( (Map<String,Object>) data.get( "config" )).get( "params" ) != null)
                     {
                         params.putAll( (Map<String,Object>) ((Map<String,Object>) data.get( "config" )).get( "params" ) );
@@ -245,6 +260,47 @@ public class Trigger {
         private boolean when(Map<String, Object> selector, String phase) {
             if (selector == null) return (phase.equals("before"));
             return selector.getOrDefault("phase", "before").equals(phase);
+        }
+        
+        private Map<String,Object> txDataCollector( TransactionData txData, String phase, Map<String,Object> config)
+        {
+            Map<String,Object> txDataMap = new HashMap<>();
+            GraphDatabaseService db = properties.getGraphDatabase();
+
+            String uidKey = (String) config.getOrDefault( "uidKey", "" );
+            Boolean nodePropertiesByLabel = (Boolean) config.getOrDefault( "nodePropsByLabel", false );
+
+            try ( Transaction tx = db.beginTx() )
+            {
+                txDataMap.put( "transactionId", phase.equals( "after" ) ? txData.getTransactionId() : -1 );
+                txDataMap.put( "commitTime", phase.equals( "after" ) ? txData.getCommitTime() : -1 );
+
+                txDataMap.put( "createdNodes", createdNodeMap(txData, uidKey ) );
+                txDataMap.put( "createdRelationships", createdRelationshipsMap( txData, uidKey ) );
+
+                txDataMap.put( "deletedNodes", deletedNodeMap( txData, uidKey ) );
+                txDataMap.put( "deletedRelationships", deletedRelationshipsMap( txData, uidKey ) );
+
+                txDataMap.put( "assignedLabels", assignedLabelMap( txData, uidKey ) );
+                txDataMap.put( "removedLabels", removedLabelMap( txData, uidKey ) );
+
+                txDataMap.put( "assignedNodeProperties", new HashMap<>(  ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byLabel", assignedNodePropertyMapByLabel( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byKey", assignedNodePropertyMapByKey( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byUid", assignedNodePropertyMap( txData, uidKey ) );
+
+                txDataMap.put( "removedNodeProperties", new HashMap<>(  ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byLabel", removedNodePropertyMapByLabel( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byKey", removedNodePropertyMapByKey( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byUid", removedNodePropertyMap( txData, uidKey ) );
+
+                txDataMap.put( "assignedRelationshipProperties", assignedRelationshipPropertyMap( txData, uidKey ) );
+                txDataMap.put( "removedRelationshipProperties", removedRelationshipPropertyMap( txData, uidKey ) );
+
+                tx.success();
+            }
+
+            return map("txData", txDataMap );
         }
 
         @Override
