@@ -1,5 +1,6 @@
 package apoc.trigger;
 
+import apoc.util.JsonUtil;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.neo4j.graphdb.Entity;
@@ -23,6 +24,10 @@ import java.util.stream.StreamSupport;
 public class TransactionDataMap
 {
 
+    public static Map<String,Object> toMap( TransactionDataMapObject t )
+    {
+        return JsonUtil.OBJECT_MAPPER.convertValue( t, Map.class );
+    }
 
     public enum ActionType
     {
@@ -33,9 +38,9 @@ public class TransactionDataMap
 
     public static final String ARRAY_PREFIX = "Array";
 
-    public static Map<String,NodeChange> updatedNodeMap( TransactionData tx, Iterable<Node> updatedNodes, String uidKey, ActionType actionType )
+    public static Map<String,Map<String,Object>> updatedNodeMap( TransactionData tx, Iterable<Node> updatedNodes, String uidKey, ActionType actionType )
     {
-        Map<String,NodeChange> nodeChanges = new HashMap<>();
+        Map<String,Map<String,Object>> nodeChanges = new HashMap<>();
 
         Iterator<Node> updatedNodesIterator = updatedNodes.iterator();
         while ( updatedNodesIterator.hasNext() )
@@ -53,25 +58,26 @@ public class TransactionDataMap
                 break;
             }
 
-            nodeChanges.put( nodeUid, new NodeChange( actionType ) );
+            nodeChanges.put( nodeUid, toMap( new NodeChange( actionType ) ) );
         }
 
         return nodeChanges.isEmpty() ? Collections.emptyMap() : nodeChanges;
     }
 
-    public static Map<String,NodeChange> createdNodeMap( TransactionData tx, String uidKey )
+    public static Map<String,Map<String,Object>> createdNodeMap( TransactionData tx, String uidKey )
     {
         return updatedNodeMap( tx, tx.createdNodes(), uidKey, ActionType.ADDED );
     }
 
-    public static Map<String,NodeChange> deletedNodeMap( TransactionData tx, String uidKey )
+    public static Map<String,Map<String,Object>> deletedNodeMap( TransactionData tx, String uidKey )
     {
         return updatedNodeMap( tx, tx.deletedNodes(), uidKey, ActionType.REMOVED );
     }
 
-    public static Map<String,RelationshipChange> updatedRelationshipsMap( TransactionData tx, Iterable<Relationship> updatedRelationships, String uidKey, ActionType actionType )
+    public static Map<String,Map<String,Object>> updatedRelationshipsMap( TransactionData tx, Iterable<Relationship> updatedRelationships, String uidKey,
+            ActionType actionType )
     {
-        Map<String,RelationshipChange> relationshipChanges = new HashMap<>();
+        Map<String,Map<String,Object>> relationshipChanges = new HashMap<>();
 
         Iterator<Relationship> updatedRelationshipsIterator = updatedRelationships.iterator();
         while ( updatedRelationshipsIterator.hasNext() )
@@ -99,27 +105,26 @@ public class TransactionDataMap
                 break;
             }
 
-            relationshipChanges.put( relationshipUid, new RelationshipChange( startNodeUid, endNodeUid, relationship.getType().name(), actionType ) );
+            relationshipChanges.put( relationshipUid, toMap( new RelationshipChange( startNodeUid, endNodeUid, relationship.getType().name(), actionType ) ) );
         }
 
         return relationshipChanges.isEmpty() ? Collections.emptyMap() : relationshipChanges;
     }
 
-    public static Map<String,RelationshipChange> createdRelationshipsMap( TransactionData tx, String uidKey )
+    public static Map<String,Map<String,Object>> createdRelationshipsMap( TransactionData tx, String uidKey )
     {
         return updatedRelationshipsMap( tx, tx.createdRelationships(), uidKey, ActionType.ADDED );
     }
 
-    public static Map<String,RelationshipChange> deletedRelationshipsMap( TransactionData tx, String uidKey )
+    public static Map<String,Map<String,Object>> deletedRelationshipsMap( TransactionData tx, String uidKey )
     {
         return updatedRelationshipsMap( tx, tx.deletedRelationships(), uidKey, ActionType.REMOVED );
     }
 
-
-
-    public static Map<String,List<LabelChange>> updatedLabelMap( TransactionData tx, Iterable<LabelEntry> assignedLabels, String uidKey, ActionType actionType)
+    public static Map<String,List<Map<String,Object>>> updatedLabelMap( TransactionData tx, Iterable<LabelEntry> assignedLabels, String uidKey,
+            ActionType actionType )
     {
-        Map<String,List<LabelChange>> labelChanges = new HashMap<>(  );
+        Map<String,List<Map<String,Object>>> labelChanges = new HashMap<>();
 
         Iterator<LabelEntry> assignedLabelsIterator = assignedLabels.iterator();
         while ( assignedLabelsIterator.hasNext() )
@@ -136,33 +141,34 @@ public class TransactionDataMap
                 nodeUid = (String) updatedNode.getProperty( uidKey, Long.toString( updatedNode.getId() ) );
                 break;
             case REMOVED:
-                nodeUid = getNodeUidFromPreviousCommit( tx, uidKey, updatedNode.getId());
+                nodeUid = getNodeUidFromPreviousCommit( tx, uidKey, updatedNode.getId() );
                 break;
             }
 
-            if (!labelChanges.containsKey( label ))
+            if ( !labelChanges.containsKey( label ) )
             {
-                labelChanges.put( label, new ArrayList<>(  ) );
+                labelChanges.put( label, new ArrayList<>() );
             }
-            labelChanges.get( label ).add( new LabelChange( nodeUid, actionType ) );
+            labelChanges.get( label ).add( toMap( new LabelChange( nodeUid, actionType ) ) );
         }
 
         return labelChanges.isEmpty() ? Collections.emptyMap() : labelChanges;
     }
 
-    public static Map<String,List<LabelChange>> assignedLabelMap( TransactionData tx, String uidKey )
+    public static Map<String,List<Map<String,Object>>> assignedLabelMap( TransactionData tx, String uidKey )
     {
         return updatedLabelMap( tx, tx.assignedLabels(), uidKey, ActionType.ADDED );
     }
 
-    public static Map<String,List<LabelChange>> removedLabelMap( TransactionData tx, String uidKey )
+    public static Map<String,List<Map<String,Object>>> removedLabelMap( TransactionData tx, String uidKey )
     {
         return updatedLabelMap( tx, tx.removedLabels(), uidKey, ActionType.REMOVED );
     }
 
-    public static Map<String,Map<String,List<PropertyChange>>> updatedNodePropertyMapByLabel( TransactionData tx, Iterable<PropertyEntry<Node>> entityIterable, String uidKey, ActionType actionType, Function<Long,String> uidFunction )
+    public static Map<String,Map<String,List<Map<String,Object>>>> updatedNodePropertyMapByLabel( TransactionData tx,
+            Iterable<PropertyEntry<Node>> entityIterable, String uidKey, ActionType actionType, Function<Long,String> uidFunction )
     {
-        Map<String,Map<String,List<PropertyChange>>> propertyChanges = new HashMap<>();
+        Map<String,Map<String,List<Map<String,Object>>>> propertyChanges = new HashMap<>();
 
         Iterator<PropertyEntry<Node>> entityIterator = entityIterable.iterator();
         while ( entityIterator.hasNext() )
@@ -172,13 +178,14 @@ public class TransactionDataMap
             Node updatedEntity = entityPropertyEntry.entity();
             String entityUid = Long.toString( updatedEntity.getId() );
 
-            List<String> labels = new ArrayList<>(  );
+            List<String> labels = new ArrayList<>();
 
             if ( actionType.equals( ActionType.REMOVED ) )
             {
                 // Get the nodes where the node properties were removed
-                Node node = ((Function<Long,Node>) (Long id) -> StreamSupport.stream( tx.removedNodeProperties().spliterator(), true )
-                        .filter( nodePropertyEntry -> id.equals(  nodePropertyEntry.entity().getId()) ).reduce( (t1,t2) -> t1 ).get().entity()).apply( updatedEntity.getId() );
+                Node node = ((Function<Long,Node>) ( Long id ) -> StreamSupport.stream( tx.removedNodeProperties().spliterator(), true ).filter(
+                        nodePropertyEntry -> id.equals( nodePropertyEntry.entity().getId() ) ).reduce( ( t1, t2 ) -> t1 ).get().entity()).apply(
+                        updatedEntity.getId() );
 
                 // Check if the node has been deleted
                 if ( StreamSupport.stream( tx.deletedNodes().spliterator(), false ).map( n -> n.getId() ).collect( Collectors.toList() ).contains(
@@ -191,8 +198,7 @@ public class TransactionDataMap
                 }
                 else
                 {
-                    labels.addAll(
-                            StreamSupport.stream( node.getLabels().spliterator(), true ).map( label -> label.name() ).collect( Collectors.toList() ) );
+                    labels.addAll( StreamSupport.stream( node.getLabels().spliterator(), true ).map( label -> label.name() ).collect( Collectors.toList() ) );
                 }
 
                 entityUid = uidFunction.apply( updatedEntity.getId() );
@@ -213,16 +219,16 @@ public class TransactionDataMap
                 {
                     propertyChanges.get( label ).put( entityUid, new ArrayList<>() );
                 }
-                if (actionType.equals( ActionType.REMOVED ))
+                if ( actionType.equals( ActionType.REMOVED ) )
                 {
                     propertyChanges.get( label ).get( entityUid ).add(
-                            new PropertyChange( entityPropertyEntry.key(), null, entityPropertyEntry.previouslyCommitedValue(), actionType ) );
+                            toMap( new PropertyChange( entityPropertyEntry.key(), null, entityPropertyEntry.previouslyCommitedValue(), actionType ) ) );
                 }
                 else
                 {
                     propertyChanges.get( label ).get( entityUid ).add(
-                            new PropertyChange( entityPropertyEntry.key(), entityPropertyEntry.value(), entityPropertyEntry.previouslyCommitedValue(),
-                                    actionType ) );
+                            toMap( new PropertyChange( entityPropertyEntry.key(), entityPropertyEntry.value(), entityPropertyEntry.previouslyCommitedValue(),
+                                    actionType ) ) );
                 }
             }
         }
@@ -230,20 +236,22 @@ public class TransactionDataMap
         return propertyChanges.isEmpty() ? Collections.emptyMap() : propertyChanges;
     }
 
-    public static Map<String,Map<String,List<PropertyChange>>> assignedNodePropertyMapByLabel(TransactionData tx, String uidKey )
+    public static Map<String,Map<String,List<Map<String,Object>>>> assignedNodePropertyMapByLabel( TransactionData tx, String uidKey )
     {
-        return updatedNodePropertyMapByLabel( tx, tx.assignedNodeProperties(), uidKey, ActionType.ADDED, (l) -> getNodeUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedNodePropertyMapByLabel( tx, tx.assignedNodeProperties(), uidKey, ActionType.ADDED,
+                ( l ) -> getNodeUidFromPreviousCommit( tx, uidKey, l ) );
     }
 
-    public static Map<String,Map<String,List<PropertyChange>>> removedNodePropertyMapByLabel(TransactionData tx, String uidKey )
+    public static Map<String,Map<String,List<Map<String,Object>>>> removedNodePropertyMapByLabel( TransactionData tx, String uidKey )
     {
-        return updatedNodePropertyMapByLabel( tx, tx.removedNodeProperties(), uidKey, ActionType.REMOVED, (l) -> getNodeUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedNodePropertyMapByLabel( tx, tx.removedNodeProperties(), uidKey, ActionType.REMOVED,
+                ( l ) -> getNodeUidFromPreviousCommit( tx, uidKey, l ) );
     }
 
-
-    public static <T extends Entity> Map<String,List<PropertyChange>> updatedEntityPropertyMap( TransactionData tx, Iterable<PropertyEntry<T>> entityIterable, String uidKey, ActionType actionType, Function<Long,String> uidFunction )
+    public static <T extends Entity> Map<String,List<Map<String,Object>>> updatedEntityPropertyMap( TransactionData tx,
+            Iterable<PropertyEntry<T>> entityIterable, String uidKey, ActionType actionType, Function<Long,String> uidFunction )
     {
-        Map<String,List<PropertyChange>> propertyChanges = new HashMap<>();
+        Map<String,List<Map<String,Object>>> propertyChanges = new HashMap<>();
 
         Iterator<PropertyEntry<T>> entityIterator = entityIterable.iterator();
         while ( entityIterator.hasNext() )
@@ -251,52 +259,58 @@ public class TransactionDataMap
             PropertyEntry<T> entityPropertyEntry = entityIterator.next();
 
             T updatedEntity = entityPropertyEntry.entity();
-            String entityUid = (actionType.equals( ActionType.REMOVED ) ? uidFunction.apply( updatedEntity.getId() ) : (String) updatedEntity.getProperty( uidKey, Long.toString( updatedEntity.getId() ) ));
+            String entityUid = (actionType.equals( ActionType.REMOVED ) ? uidFunction.apply( updatedEntity.getId() )
+                                                                        : (String) updatedEntity.getProperty( uidKey, Long.toString( updatedEntity.getId() ) ));
 
-            if (!propertyChanges.containsKey( entityUid ))
+            if ( !propertyChanges.containsKey( entityUid ) )
             {
-                propertyChanges.put(entityUid, new ArrayList<>(  ) );
-
+                propertyChanges.put( entityUid, new ArrayList<>() );
             }
-            if (actionType.equals( ActionType.REMOVED ))
+            if ( actionType.equals( ActionType.REMOVED ) )
             {
                 propertyChanges.get( entityUid ).add(
-                        new PropertyChange( entityPropertyEntry.key(), null, entityPropertyEntry.previouslyCommitedValue(), actionType ) );
+                        toMap( new PropertyChange( entityPropertyEntry.key(), null, entityPropertyEntry.previouslyCommitedValue(), actionType ) ) );
             }
             else
             {
                 propertyChanges.get( entityUid ).add(
-                        new PropertyChange( entityPropertyEntry.key(), entityPropertyEntry.value(), entityPropertyEntry.previouslyCommitedValue(), actionType ) );
+                        toMap( new PropertyChange( entityPropertyEntry.key(), entityPropertyEntry.value(), entityPropertyEntry.previouslyCommitedValue(),
+                                actionType ) ) );
             }
-
         }
 
         return propertyChanges.isEmpty() ? Collections.emptyMap() : propertyChanges;
     }
 
-    public static <T extends Entity> Map<String,List<PropertyChange>> assignedNodePropertyMap(TransactionData tx, String uidKey )
+    public static <T extends Entity> Map<String,List<Map<String,Object>>> assignedNodePropertyMap( TransactionData tx, String uidKey )
     {
-        return updatedEntityPropertyMap( tx, tx.assignedNodeProperties(), uidKey, ActionType.ADDED, (l) -> getNodeUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedEntityPropertyMap( tx, tx.assignedNodeProperties(), uidKey, ActionType.ADDED, ( l ) -> getNodeUidFromPreviousCommit( tx, uidKey, l ) );
     }
 
-    public static <T extends Entity> Map<String,List<PropertyChange>> assignedRelationshipPropertyMap(TransactionData tx, String uidKey )
+    public static <T extends Entity> Map<String,List<Map<String,Object>>> assignedRelationshipPropertyMap( TransactionData tx, String uidKey )
     {
-        return updatedEntityPropertyMap( tx, tx.assignedRelationshipProperties(), uidKey, ActionType.ADDED, (l) -> getRelationshipUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedEntityPropertyMap( tx, tx.assignedRelationshipProperties(), uidKey, ActionType.ADDED,
+                ( l ) -> getRelationshipUidFromPreviousCommit( tx, uidKey, l ) );
     }
 
-    public static <T extends Entity> Map<String,List<PropertyChange>> removedNodePropertyMap(TransactionData tx, String uidKey )
+    public static <T extends Entity> Map<String,List<Map<String,Object>>> removedNodePropertyMap( TransactionData tx, String uidKey )
     {
-        return updatedEntityPropertyMap( tx, tx.removedNodeProperties(), uidKey, ActionType.REMOVED, (l) -> getNodeUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedEntityPropertyMap( tx, tx.removedNodeProperties(), uidKey, ActionType.REMOVED, ( l ) -> getNodeUidFromPreviousCommit( tx, uidKey, l ) );
     }
 
-    public static <T extends Entity> Map<String,List<PropertyChange>> removedRelationshipPropertyMap(TransactionData tx, String uidKey )
+    public static <T extends Entity> Map<String,List<Map<String,Object>>> removedRelationshipPropertyMap( TransactionData tx, String uidKey )
     {
-        return updatedEntityPropertyMap( tx, tx.removedRelationshipProperties(), uidKey, ActionType.REMOVED, (l) -> getRelationshipUidFromPreviousCommit( tx, uidKey, l ));
+        return updatedEntityPropertyMap( tx, tx.removedRelationshipProperties(), uidKey, ActionType.REMOVED,
+                ( l ) -> getRelationshipUidFromPreviousCommit( tx, uidKey, l ) );
+    }
+
+    private interface TransactionDataMapObject
+    {
     }
 
     @JsonAutoDetect
     @JsonIgnoreProperties( ignoreUnknown = true )
-    public static class LabelChange
+    public static class LabelChange implements TransactionDataMapObject
     {
         private String nodeUid;
 
@@ -331,7 +345,7 @@ public class TransactionDataMap
 
     @JsonAutoDetect
     @JsonIgnoreProperties( ignoreUnknown = true )
-    public static class NodeChange
+    public static class NodeChange implements TransactionDataMapObject
     {
         private ActionType action;
 
@@ -353,7 +367,7 @@ public class TransactionDataMap
 
     @JsonAutoDetect
     @JsonIgnoreProperties( ignoreUnknown = true )
-    public static class RelationshipChange
+    public static class RelationshipChange implements TransactionDataMapObject
     {
         private String uidOfStartNode;
 
@@ -414,7 +428,7 @@ public class TransactionDataMap
 
     @JsonAutoDetect
     @JsonIgnoreProperties( ignoreUnknown = true )
-    public static class PropertyChange
+    public static class PropertyChange implements TransactionDataMapObject
     {
         private String key;
 
@@ -426,12 +440,12 @@ public class TransactionDataMap
 
         private ActionType action;
 
-        PropertyChange( String key, Object value, Object oldValue, ActionType action)
+        PropertyChange( String key, Object value, Object oldValue, ActionType action )
         {
             this.key = key;
             this.value = value;
             this.type = value == null ? null : value.getClass().getSimpleName();
-            if (type != null)
+            if ( type != null )
             {
                 if ( value instanceof long[] )
                 {
@@ -501,25 +515,23 @@ public class TransactionDataMap
         }
     }
 
-    public static String getNodeUidFromPreviousCommit(TransactionData tx, String uidKey, Long id)
+    public static String getNodeUidFromPreviousCommit( TransactionData tx, String uidKey, Long id )
     {
-        String result = StreamSupport.stream( tx.removedNodeProperties().spliterator(), true )
-                .filter( (p) -> p.key().equals( uidKey ) )
-                .filter( (p) -> p.entity().getId() == id )
-                .map( (p) -> (String) p.previouslyCommitedValue() )
-                .collect( Collectors.joining());
+        String result = StreamSupport.stream( tx.removedNodeProperties().spliterator(), true ).filter( ( p ) -> p.key().equals( uidKey ) ).filter(
+                ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() ).collect( Collectors.joining() );
 
         return (result.isEmpty()) ? Long.toString( id ) : result;
-    };
+    }
 
-    public static String getRelationshipUidFromPreviousCommit(TransactionData tx, String uidKey, Long id)
+    ;
+
+    public static String getRelationshipUidFromPreviousCommit( TransactionData tx, String uidKey, Long id )
     {
-        String result = StreamSupport.stream( tx.removedRelationshipProperties().spliterator(), true )
-                .filter( (p) -> p.key().equals( uidKey ) )
-                .filter( (p) -> p.entity().getId() == id )
-                .map( (p) -> (String) p.previouslyCommitedValue() )
-                .collect( Collectors.joining());
+        String result = StreamSupport.stream( tx.removedRelationshipProperties().spliterator(), true ).filter( ( p ) -> p.key().equals( uidKey ) ).filter(
+                ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() ).collect( Collectors.joining() );
 
         return (result.isEmpty()) ? Long.toString( id ) : result;
-    };
+    }
+
+    ;
 }
