@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 
 import static apoc.trigger.TransactionDataMap.assignedLabelMap;
 import static apoc.trigger.TransactionDataMap.assignedNodePropertyMap;
+import static apoc.trigger.TransactionDataMap.assignedNodePropertyMapByKey;
 import static apoc.trigger.TransactionDataMap.assignedNodePropertyMapByLabel;
 import static apoc.trigger.TransactionDataMap.assignedRelationshipPropertyMap;
 import static apoc.trigger.TransactionDataMap.createdNodeMap;
@@ -31,6 +32,7 @@ import static apoc.trigger.TransactionDataMap.deletedNodeMap;
 import static apoc.trigger.TransactionDataMap.deletedRelationshipsMap;
 import static apoc.trigger.TransactionDataMap.removedLabelMap;
 import static apoc.trigger.TransactionDataMap.removedNodePropertyMap;
+import static apoc.trigger.TransactionDataMap.removedNodePropertyMapByKey;
 import static apoc.trigger.TransactionDataMap.removedNodePropertyMapByLabel;
 import static apoc.trigger.TransactionDataMap.removedRelationshipPropertyMap;
 import static apoc.util.Util.map;
@@ -282,16 +284,15 @@ public class Trigger {
                 txDataMap.put( "assignedLabels", assignedLabelMap( txData, uidKey ) );
                 txDataMap.put( "removedLabels", removedLabelMap( txData, uidKey ) );
 
-                if (nodePropertiesByLabel)
-                {
-                    txDataMap.put( "assignedNodeProperties", assignedNodePropertyMapByLabel( txData, uidKey ) );
-                    txDataMap.put( "removedNodeProperties", removedNodePropertyMapByLabel( txData, uidKey ) );
-                }
-                else{
-                    txDataMap.put( "assignedNodeProperties", assignedNodePropertyMap( txData, uidKey ) );
-                    txDataMap.put( "removedNodeProperties", removedNodePropertyMap( txData, uidKey ) );
-                }
+                txDataMap.put( "assignedNodeProperties", new HashMap<>(  ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byLabel", assignedNodePropertyMapByLabel( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byKey", assignedNodePropertyMapByKey( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "assignedNodeProperties" )).put( "byUid", assignedNodePropertyMap( txData, uidKey ) );
 
+                txDataMap.put( "removedNodeProperties", new HashMap<>(  ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byLabel", removedNodePropertyMapByLabel( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byKey", removedNodePropertyMapByKey( txData, uidKey ) );
+                ((Map<String,Object>) txDataMap.get( "removedNodeProperties" )).put( "byUid", removedNodePropertyMap( txData, uidKey ) );
 
                 txDataMap.put( "assignedRelationshipProperties", assignedRelationshipPropertyMap( txData, uidKey ) );
                 txDataMap.put( "removedRelationshipProperties", removedRelationshipPropertyMap( txData, uidKey ) );

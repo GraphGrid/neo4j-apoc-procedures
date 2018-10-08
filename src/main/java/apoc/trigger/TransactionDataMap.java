@@ -165,6 +165,61 @@ public class TransactionDataMap
         return updatedLabelMap( tx, tx.removedLabels(), uidKey, ActionType.REMOVED );
     }
 
+    /**
+     * Returns the updated node properties by key (property name) and value (list of node uids).
+     * @param tx
+     * @param entityIterable
+     * @param uidKey
+     * @param actionType
+     * @return
+     */
+    public static Map<String,List<String>> updatedNodePropertyMapByKey( TransactionData tx,
+            Iterable<PropertyEntry<Node>> entityIterable, String uidKey, ActionType actionType )
+    {
+        Map<String,List<String>> propertyChanges = new HashMap<>();
+
+        Iterator<PropertyEntry<Node>> entityIterator = entityIterable.iterator();
+        while ( entityIterator.hasNext() )
+        {
+            PropertyEntry<Node> entityPropertyEntry = entityIterator.next();
+
+            String propertyKey = entityPropertyEntry.key();
+
+            Node updatedEntity = entityPropertyEntry.entity();
+            String entityUid = Long.toString( updatedEntity.getId() );
+
+            switch ( actionType )
+            {
+            case ADDED:
+                entityUid = (String) updatedEntity.getProperty( uidKey, Long.toString( updatedEntity.getId() ) );
+                break;
+            case REMOVED:
+                entityUid = getNodeUidFromPreviousCommit( tx, uidKey, updatedEntity.getId() );
+                break;
+            }
+
+            if (!propertyChanges.containsKey( propertyKey ))
+            {
+                propertyChanges.put( propertyKey, new ArrayList<>(  ) );
+            }
+
+            propertyChanges.get( propertyKey ).add( entityUid );
+        }
+
+        return propertyChanges.isEmpty() ? Collections.emptyMap() : propertyChanges;
+    }
+
+    public static Map<String,List<String>> assignedNodePropertyMapByKey( TransactionData tx, String uidKey )
+    {
+        return updatedNodePropertyMapByKey( tx, tx.assignedNodeProperties(), uidKey, ActionType.ADDED );
+    }
+
+    public static Map<String,List<String>> removedNodePropertyMapByKey( TransactionData tx, String uidKey )
+    {
+        return updatedNodePropertyMapByKey( tx, tx.assignedNodeProperties(), uidKey, ActionType.REMOVED );
+    }
+
+
     public static Map<String,Map<String,List<Map<String,Object>>>> updatedNodePropertyMapByLabel( TransactionData tx,
             Iterable<PropertyEntry<Node>> entityIterable, String uidKey, ActionType actionType, Function<Long,String> uidFunction )
     {
