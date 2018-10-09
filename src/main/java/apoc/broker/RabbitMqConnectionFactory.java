@@ -59,6 +59,23 @@ public class RabbitMqConnectionFactory
             }
         }
 
+        public RabbitMqConnection( Log log, String connectionName, Map<String,Object> configuration, ConnectionFactory connectionFactory )
+        {
+            this.log = log;
+            this.connectionName = connectionName;
+            this.configuration = configuration;
+            this.connectionFactory = connectionFactory;
+
+            try{
+                this.connection = this.connectionFactory.newConnection();
+                this.channel = this.connection.createChannel();
+            }
+            catch ( Exception e )
+            {
+                this.log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: " + e.toString() );
+            }
+        }
+
         @Override
         public Stream<BrokerMessage> send( @Name( "message" ) Map<String,Object> message, @Name( "configuration" ) Map<String,Object> configuration )
         {
@@ -80,6 +97,8 @@ public class RabbitMqConnectionFactory
             String routingKey = (String) configuration.get( "routingKey" );
             try
             {
+                checkConnectionHealth();
+
                 // Ensure the exchange and queue are declared.
                 channel.exchangeDeclare( exchangeName, "topic", true );
                 channel.queueDeclarePassive( queueName );
@@ -190,5 +209,57 @@ public class RabbitMqConnectionFactory
                 this.connection = connectionFactory.newConnection();
             }
         }
+
+        private void checkConnectionHealth(){
+            try{
+
+                if (connection == null || !connection.isOpen())
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Connection lost. Attempting to reestablish the connection." );
+                    this.connection = connectionFactory.newConnection();
+                }
+
+                if ( channel == null || !channel.isOpen() )
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". RabbitMQ channel lost. Attempting to create new channel." );
+                    channel = connection.createChannel();
+                }
+
+            }
+            catch (Exception e)
+            {
+                log.error( e.getMessage() );
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Unable to resolve connection issue, attempting to create a new connection." );
+                recreateConnection( this );
+            }
+
+        }
+
+        public Log getLog()
+        {
+            return log;
+        }
+
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
+        }
+
+        public ConnectionFactory getConnectionFactory()
+        {
+            return connectionFactory;
+        }
+    }
+
+    public static RabbitMqConnection recreateConnection( RabbitMqConnection rabbitMqConnection )
+    {
+        rabbitMqConnection.stop();
+
+        return new RabbitMqConnection( rabbitMqConnection.getLog(), rabbitMqConnection.getConnectionName(), rabbitMqConnection.getConfiguration() );
     }
 }
