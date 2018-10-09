@@ -9,7 +9,6 @@ import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.StringUtils;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Name;
@@ -19,9 +18,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Stream;
 
-public class SqsConnectionFactory
+public class SqsConnectionFactory implements ConnectionFactory
 {
 
     private SqsConnectionFactory()
@@ -184,6 +184,30 @@ public class SqsConnectionFactory
                 }
             }
             return false;
+        }
+
+        @Override
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        @Override
+        public Log getLog()
+        {
+            return log;
+        }
+
+        @Override
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
+        }
+
+        @Override
+        public void checkConnectionHealth() throws Exception
+        {
+            amazonSQS.listQueues();
         }
     }
 }

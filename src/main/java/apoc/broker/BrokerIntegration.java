@@ -2,19 +2,17 @@ package apoc.broker;
 
 import apoc.ApocConfiguration;
 import org.apache.commons.lang3.StringUtils;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Stream;
-
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Description;
 import org.neo4j.procedure.Mode;
 import org.neo4j.procedure.Name;
 import org.neo4j.procedure.Procedure;
+
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 public class BrokerIntegration
 {
@@ -22,7 +20,7 @@ public class BrokerIntegration
     @Procedure( mode = Mode.READ )
     @Description( "apoc.broker.send(connectionName, message, configuration) - Send a message to the broker associated with the connectionName namespace. Takes in parameter which are dependent on the broker being used." )
     public Stream<BrokerMessage> send( @Name( "connectionName" ) String connectionName, @Name( "message" ) Map<String,Object> message,
-            @Name( "configuration" ) Map<String,Object> configuration ) throws IOException
+            @Name( "configuration" ) Map<String,Object> configuration ) throws Exception
     {
 
         return BrokerHandler.sendMessageToBrokerConnection( connectionName, message, configuration );
@@ -54,13 +52,20 @@ public class BrokerIntegration
         }
 
         public static Stream<BrokerMessage> sendMessageToBrokerConnection( String connection, Map<String,Object> message, Map<String,Object> configuration )
-                throws IOException
+                throws Exception
         {
             if ( !brokerConnections.containsKey( connection ) )
             {
                 throw new IOException( "Broker Exception. Connection '" + connection + "' is not a configured broker connection." );
             }
-            return (brokerConnections.get( connection )).send( message, configuration );
+            try {
+                return (brokerConnections.get( connection )).send( message, configuration );
+            }
+            catch ( Exception e )
+            {
+                ConnectionManager.asyncReconnect( connection );
+            }
+            throw new RuntimeException( "Unable to send message to connection '" + connection + "'." );
         }
 
         public static Stream<BrokerResult> receiveMessageFromBrokerConnection( String connection, Map<String,Object> configuration ) throws IOException
@@ -70,6 +75,11 @@ public class BrokerIntegration
                 throw new IOException( "Broker Exception. Connection '" + connection + "' is not a configured broker connection." );
             }
             return brokerConnections.get( connection ).receive( configuration );
+        }
+
+        public static void setBrokerConnections( Map<String,BrokerConnection> brokerConnections)
+        {
+            BrokerHandler.brokerConnections = brokerConnections;
         }
     }
 

@@ -18,9 +18,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Random;
 import java.util.stream.Stream;
 
-public class KafkaConnectionFactory
+public class KafkaConnectionFactory implements ConnectionFactory
 {
 
     private KafkaConnectionFactory()
@@ -191,6 +192,30 @@ public class KafkaConnectionFactory
             {
                 log.error( "Broker Exception. Failed to stop(). Connection Name: " + connectionName + ". Error: " + e.toString() );
             }
+        }
+
+        @Override
+        public void checkConnectionHealth() throws Exception
+        {
+            kafkaConsumer.listTopics();
+        }
+
+        @Override
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        @Override
+        public Log getLog()
+        {
+            return log;
+        }
+
+        @Override
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
         }
     }
 }

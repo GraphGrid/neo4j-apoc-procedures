@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.neo4j.logging.Log;
 import org.neo4j.procedure.Name;
 
 public interface BrokerConnection
@@ -13,9 +14,17 @@ public interface BrokerConnection
 
     ObjectMapper objectMapper = new ObjectMapper(  );
 
-    Stream<BrokerMessage> send( @Name( "message" ) Map<String,Object> message, @Name( "configuration" ) Map<String,Object> configuration );
+    Stream<BrokerMessage> send( @Name( "message" ) Map<String,Object> message, @Name( "configuration" ) Map<String,Object> configuration ) throws Exception;
 
     Stream<BrokerResult> receive( @Name( "configuration" ) Map<String,Object> configuration ) throws IOException;
 
     void stop();
+
+    void checkConnectionHealth() throws Exception;
+
+    String getConnectionName();
+
+    Log getLog();
+
+    Map<String,Object> getConfiguration();
 }
