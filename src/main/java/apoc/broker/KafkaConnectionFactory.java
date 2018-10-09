@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Random;
 import java.util.stream.Stream;
 
 public class KafkaConnectionFactory
@@ -192,5 +193,76 @@ public class KafkaConnectionFactory
                 log.error( "Broker Exception. Failed to stop(). Connection Name: " + connectionName + ". Error: " + e.toString() );
             }
         }
+
+        @Override
+        public void checkConnectionHealth() throws Exception
+        {
+            kafkaConsumer.listTopics();
+        }
+
+        @Override
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        @Override
+        public Log getLog()
+        {
+            return log;
+        }
+
+        @Override
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
+        }
+    }
+
+    private static KafkaConnection recreateConnection( KafkaConnection kafkaConnection ) throws Exception
+    {
+        kafkaConnection.stop();
+        KafkaConnection reconnect = new KafkaConnection( kafkaConnection.getLog(), kafkaConnection.getConnectionName(), kafkaConnection.getConfiguration() );
+        reconnect.checkConnectionHealth( );
+        return reconnect;
+    }
+
+    public static KafkaConnection reconnect( KafkaConnection kafkaConnection ) throws Exception
+    {
+        int low = 1;
+        int high = 1000;
+        Random r = new Random();
+
+        // Attempt to execute our main action, retrying up to 4 times
+        // if an exception is thrown
+        for ( int n = 0; n <= 4; n++ )
+        {
+            try
+            {
+                return recreateConnection( kafkaConnection );
+            }
+            catch ( Exception e )
+            {
+
+                // If we've exhausted our retries, throw the exception
+                if ( n == 4 )
+                {
+                    throw e;
+                }
+
+                // Wait an indeterminate amount of time (range determined by n)
+                try
+                {
+                    Thread.sleep( ((int) Math.round( Math.pow( 2, n ) ) * 1000) + (r.nextInt( high - low ) + low) );
+                }
+                catch ( InterruptedException ignored )
+                {
+                    // Ignoring interruptions in the Thread sleep so that
+                    // retries continue
+                }
+            }
+        }
+
+        throw new RuntimeException( "Unable to reconnect KafkaConnection '" + kafkaConnection.getConnectionName() + "'." );
     }
 }

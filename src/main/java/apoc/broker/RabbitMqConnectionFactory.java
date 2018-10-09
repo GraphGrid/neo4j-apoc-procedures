@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
@@ -59,8 +60,26 @@ public class RabbitMqConnectionFactory
             }
         }
 
+        public RabbitMqConnection( Log log, String connectionName, Map<String,Object> configuration, ConnectionFactory connectionFactory )
+        {
+            this.log = log;
+            this.connectionName = connectionName;
+            this.configuration = configuration;
+            this.connectionFactory = connectionFactory;
+
+            try
+            {
+                this.connection = this.connectionFactory.newConnection();
+                this.channel = this.connection.createChannel();
+            }
+            catch ( Exception e )
+            {
+                this.log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: " + e.toString() );
+            }
+        }
+
         @Override
-        public Stream<BrokerMessage> send( @Name( "message" ) Map<String,Object> message, @Name( "configuration" ) Map<String,Object> configuration )
+        public Stream<BrokerMessage> send( @Name( "message" ) Map<String,Object> message, @Name( "configuration" ) Map<String,Object> configuration ) throws Exception
         {
             if ( !configuration.containsKey( "exchangeName" ) )
             {
@@ -78,22 +97,18 @@ public class RabbitMqConnectionFactory
             String exchangeName = (String) configuration.get( "exchangeName" );
             String queueName = (String) configuration.get( "queueName" );
             String routingKey = (String) configuration.get( "routingKey" );
-            try
-            {
-                // Ensure the exchange and queue are declared.
-                channel.exchangeDeclare( exchangeName, "topic", true );
-                channel.queueDeclarePassive( queueName );
 
-                // Ensure the exchange and queue are bound by the routing key.
-                channel.queueBind( queueName, exchangeName, routingKey );
+            checkConnectionHealth();
 
-                // Get the message bytes and send the message bytes.
-                channel.basicPublish( exchangeName, routingKey, null, objectMapper.writeValueAsBytes( message ) );
-            }
-            catch ( Exception e )
-            {
-                log.error( "Broker Exception. Connection Name: " + connectionName + ". Error: " + e.toString() );
-            }
+            // Ensure the exchange and queue are declared.
+            channel.exchangeDeclare( exchangeName, "topic", true );
+            channel.queueDeclarePassive( queueName );
+
+            // Ensure the exchange and queue are bound by the routing key.
+            channel.queueBind( queueName, exchangeName, routingKey );
+
+            // Get the message bytes and send the message bytes.
+            channel.basicPublish( exchangeName, routingKey, null, objectMapper.writeValueAsBytes( message ) );
 
             return Stream.of( new BrokerMessage( connectionName, message, configuration ) );
         }
@@ -175,20 +190,87 @@ public class RabbitMqConnectionFactory
             }
         }
 
-        private void createChannelIfClosed() throws IOException
+        public void checkConnectionHealth() throws Exception
         {
-            if ( !channel.isOpen() )
+            if ( connection == null || !connection.isOpen() )
             {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". Connection lost. Attempting to reestablish the connection." );
+                this.connection = connectionFactory.newConnection();
+            }
+
+            if ( channel == null || !channel.isOpen() )
+            {
+                log.error( "Broker Exception. Connection Name: " + connectionName + ". RabbitMQ channel lost. Attempting to create new channel." );
                 channel = connection.createChannel();
+            }
+
+        }
+
+        public Log getLog()
+        {
+            return log;
+        }
+
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
+        }
+
+        public ConnectionFactory getConnectionFactory()
+        {
+            return connectionFactory;
+        }
+    }
+
+    private static RabbitMqConnection recreateConnection( RabbitMqConnection rabbitMqConnection ) throws Exception
+    {
+        rabbitMqConnection.stop();
+        RabbitMqConnection reconnect = new RabbitMqConnection( rabbitMqConnection.getLog(), rabbitMqConnection.getConnectionName(), rabbitMqConnection.getConfiguration() );
+        reconnect.checkConnectionHealth( );
+        return reconnect;
+    }
+
+    public static RabbitMqConnection reconnect( RabbitMqConnection rabbitMqConnection ) throws Exception
+    {
+        int low = 1;
+        int high = 1000;
+        Random r = new Random();
+
+        // Attempt to execute our main action, retrying up to 4 times
+        // if an exception is thrown
+        for ( int n = 0; n <= 4; n++ )
+        {
+            try
+            {
+                return recreateConnection( rabbitMqConnection );
+            }
+            catch ( Exception e )
+            {
+
+                // If we've exhausted our retries, throw the exception
+                if ( n == 4 )
+                {
+                    throw e;
+                }
+
+                // Wait an indeterminate amount of time (range determined by n)
+                try
+                {
+                    Thread.sleep( ((int) Math.round( Math.pow( 2, n ) ) * 1000) + (r.nextInt( high - low ) + low) );
+                }
+                catch ( InterruptedException ignored )
+                {
+                    // Ignoring interruptions in the Thread sleep so that
+                    // retries continue
+                }
             }
         }
 
-        private void createConnectionIfClosed() throws IOException, TimeoutException
-        {
-            if ( !connection.isOpen() )
-            {
-                this.connection = connectionFactory.newConnection();
-            }
-        }
+        throw new RuntimeException( "Unable to reconnect RabbitMQConnection '" + rabbitMqConnection.getConnectionName() + "'." );
     }
 }

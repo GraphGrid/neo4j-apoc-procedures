@@ -9,7 +9,6 @@ import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
 import com.amazonaws.services.sqs.model.ReceiveMessageResult;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.StringUtils;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Name;
@@ -19,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.stream.Stream;
 
 public class SqsConnectionFactory
@@ -185,5 +185,76 @@ public class SqsConnectionFactory
             }
             return false;
         }
+
+        @Override
+        public String getConnectionName()
+        {
+            return connectionName;
+        }
+
+        @Override
+        public Log getLog()
+        {
+            return log;
+        }
+
+        @Override
+        public Map<String,Object> getConfiguration()
+        {
+            return configuration;
+        }
+
+        @Override
+        public void checkConnectionHealth() throws Exception
+        {
+            amazonSQS.listQueues();
+        }
+    }
+
+    private static SqsConnection recreateConnection( SqsConnection sqsConnection ) throws Exception
+    {
+        sqsConnection.stop();
+        SqsConnection reconnect = new SqsConnection( sqsConnection.getLog(), sqsConnection.getConnectionName(), sqsConnection.getConfiguration() );
+        reconnect.checkConnectionHealth();
+        return reconnect;
+    }
+
+    public static SqsConnection reconnect( SqsConnection sqsConnection ) throws Exception
+    {
+        int low = 1;
+        int high = 1000;
+        Random r = new Random();
+
+        // Attempt to execute our main action, retrying up to 4 times
+        // if an exception is thrown
+        for ( int n = 0; n <= 4; n++ )
+        {
+            try
+            {
+                return recreateConnection( sqsConnection );
+            }
+            catch ( Exception e )
+            {
+
+                // If we've exhausted our retries, throw the exception
+                if ( n == 4 )
+                {
+                    throw e;
+                }
+
+                // Wait an indeterminate amount of time (range determined by n)
+                try
+                {
+                    Thread.sleep( ((int) Math.round( Math.pow( 2, n ) ) * 1000) + (r.nextInt( high - low ) + low) );
+                }
+                catch ( InterruptedException ignored )
+                {
+                    // Ignoring interruptions in the Thread sleep so that
+                    // retries continue
+                }
+            }
+        }
+
+        throw new RuntimeException( "Unable to reconnect SqsConnection '" + sqsConnection.getConnectionName() + "'." );
     }
 }
