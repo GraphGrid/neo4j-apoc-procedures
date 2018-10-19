@@ -79,7 +79,7 @@ public class ApocKernelExtensionFactory extends KernelExtensionFactory<ApocKerne
             triggerLifeCycle.start();
             indexUpdateLifeCycle = new IndexUpdateTransactionEventHandler.LifeCycle(db, log.getUserLog(Procedures.class));
             indexUpdateLifeCycle.start();
-            brokerLifeCycle = new BrokerIntegration.BrokerLifeCycle(log.getUserLog(BrokerIntegration.class));
+            brokerLifeCycle = new BrokerIntegration.BrokerLifeCycle(db, log.getUserLog(BrokerIntegration.class));
             brokerLifeCycle .start();
         }
 

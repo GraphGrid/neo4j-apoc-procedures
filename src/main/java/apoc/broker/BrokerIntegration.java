@@ -1,7 +1,9 @@
 package apoc.broker;
 
 import apoc.ApocConfiguration;
+import apoc.broker.logging.BrokerLogger;
 import org.apache.commons.lang3.StringUtils;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Description;
 import org.neo4j.procedure.Mode;
@@ -63,7 +65,8 @@ public class BrokerIntegration
             }
             catch ( Exception e )
             {
-                // TODO: Put connectionName, config, and message into retry log
+                BrokerLogger.error( new BrokerLogger.LogEntry( connection, message, configuration ) );
+
 
                 if ( (brokerConnections.get( connection )) instanceof RabbitMqConnectionFactory.RabbitMqConnection )
                 {
@@ -87,7 +90,7 @@ public class BrokerIntegration
                     brokerConnections.put( connection, kafkaConnection );
                 }
             }
-            throw new RuntimeException( "Unable to send message to connection '" + connection + "'." );
+            throw new RuntimeException( "Unable to send message to connection '" + connection + "'. Logged in '" + BrokerLogger.getLogName() + "'." );
         }
 
         public static Stream<BrokerResult> receiveMessageFromBrokerConnection( String connection, Map<String,Object> configuration ) throws IOException
@@ -103,10 +106,14 @@ public class BrokerIntegration
     public static class BrokerLifeCycle
     {
         private final Log log;
+        private final GraphDatabaseAPI db;
 
-        public BrokerLifeCycle( Log log )
+        private static final String LOGS_CONFIG = "logs";
+
+        public BrokerLifeCycle(  GraphDatabaseAPI db, Log log)
         {
             this.log = log;
+            this.db = db;
         }
 
         private static String getBrokerConfiguration( String connectionName, String key )
@@ -126,10 +133,17 @@ public class BrokerIntegration
 
             Set<String> connectionList = new HashSet<>();
 
-            value.forEach( ( configurationString, object ) ->
-            {
+            value.forEach( ( configurationString, object ) -> {
                 String connectionName = configurationString.split( "\\." )[0];
-                connectionList.add( connectionName );
+
+                if ( connectionName.equals( LOGS_CONFIG ) )
+                {
+                    BrokerLogger.initializeBrokerLogger( db, ApocConfiguration.get( "broker." + LOGS_CONFIG ) );
+                }
+                else
+                {
+                    connectionList.add( connectionName );
+                }
             } );
 
             for ( String connectionName : connectionList )
