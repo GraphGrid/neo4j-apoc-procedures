@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
@@ -37,6 +38,9 @@ public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
         private Connection connection;
         private Channel channel;
 
+        private AtomicBoolean connected = new AtomicBoolean( false );
+        private AtomicBoolean reconnecting = new AtomicBoolean( false );
+
         public RabbitMqConnection( Log log, String connectionName, Map<String,Object> configuration )
         {
             this.log = log;
@@ -53,6 +57,7 @@ public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
                 this.connection = this.connectionFactory.newConnection();
 
                 this.channel = this.connection.createChannel();
+                connected.set( true );
             }
             catch ( Exception e )
             {
@@ -194,13 +199,19 @@ public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
         {
             if ( connection == null || !connection.isOpen() )
             {
-                log.error( "Broker Exception. Connection Name: " + connectionName + ". Connection lost. Attempting to reestablish the connection." );
+                if(connected.get())
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". Connection lost. Attempting to reestablish the connection." );
+                }
                 this.connection = connectionFactory.newConnection();
             }
 
             if ( channel == null || !channel.isOpen() )
             {
-                log.error( "Broker Exception. Connection Name: " + connectionName + ". RabbitMQ channel lost. Attempting to create new channel." );
+                if(connected.get())
+                {
+                    log.error( "Broker Exception. Connection Name: " + connectionName + ". RabbitMQ channel lost. Attempting to create new channel." );
+                }
                 channel = connection.createChannel();
             }
 
@@ -224,6 +235,30 @@ public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
         public ConnectionFactory getConnectionFactory()
         {
             return connectionFactory;
+        }
+
+        @Override
+        public Boolean isConnected()
+        {
+            return connected.get();
+        }
+
+        @Override
+        public void setConnected( Boolean connected )
+        {
+            this.connected.getAndSet( connected );
+        }
+
+        @Override
+        public Boolean isReconnecting()
+        {
+            return reconnecting.get();
+        }
+
+        @Override
+        public void setReconnecting( Boolean reconnecting )
+        {
+            this.reconnecting.getAndSet( reconnecting );
         }
     }
 }

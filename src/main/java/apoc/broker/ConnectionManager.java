@@ -5,8 +5,8 @@ import org.neo4j.logging.Log;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
 public class ConnectionManager
 {
@@ -16,7 +16,7 @@ public class ConnectionManager
     {
     }
 
-    private static Map<String,BrokerConnection> brokerConnections = new HashMap<>();
+    private static Map<String,BrokerConnection> brokerConnections = new ConcurrentHashMap<>( );
 
     public static BrokerConnection addRabbitMQConnection( String connectionName, Log log, Map<String,Object> configuration )
     {
@@ -36,14 +36,23 @@ public class ConnectionManager
         return brokerConnections.put( connectionName, KafkaConnectionFactory.createConnection( connectionName, log, configuration ) );
     }
 
-    public static void asyncReconnect( String connectionName ) throws Exception
+    public static BrokerConnection getConnection(String connectionName)
     {
-        pool.submit( () -> {
-            BrokerConnection brokerConnection = ConnectionFactory.reconnect( (brokerConnections.get( connectionName )) );
-            brokerConnections.put( connectionName, brokerConnection );
-            BrokerIntegration.BrokerHandler.setBrokerConnections( brokerConnections );
-            return brokerConnection;
-        } );
+        return brokerConnections.get( connectionName );
+    }
+
+    public static Boolean doesExist(String connectionName)
+    {
+        return brokerConnections.containsKey( connectionName );
+    }
+
+    public static void closeConnection(String connectionName){
+        brokerConnections.get( connectionName ).stop();
+    }
+
+    public static void updateConnection(final String connectionName, final BrokerConnection brokerConnection)
+    {
+        brokerConnections.put( connectionName, brokerConnection );
     }
 
     public static void closeConnections()
@@ -51,8 +60,5 @@ public class ConnectionManager
         brokerConnections.forEach( ( name, connection ) -> connection.stop() );
     }
 
-    public static Map<String,BrokerConnection> getBrokerConnections()
-    {
-        return brokerConnections;
-    }
+
 }

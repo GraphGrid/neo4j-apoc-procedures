@@ -27,4 +27,10 @@ public interface BrokerConnection
     Log getLog();
 
     Map<String,Object> getConfiguration();
+
+    Boolean isConnected();
+    void setConnected( Boolean connected );
+
+    Boolean isReconnecting();
+    void setReconnecting( Boolean reconnecting );
 }

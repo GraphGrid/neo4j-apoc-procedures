@@ -25,6 +25,8 @@ public interface ConnectionFactory
         }
 
         reconnect.checkConnectionHealth();
+        reconnect.setConnected( true );
+        reconnect.setReconnecting( false );
         return reconnect;
     }
 
@@ -34,6 +36,7 @@ public interface ConnectionFactory
         int high = 1000;
         int n = 0;
         Random r = new Random();
+        brokerConnection.setReconnecting( true );
 
         while (true)
         {
