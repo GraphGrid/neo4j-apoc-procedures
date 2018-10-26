@@ -17,6 +17,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
+/**
+ * @author alexanderiudice
+ */
 public class RabbitMqConnectionFactory implements apoc.broker.ConnectionFactory
 {
 

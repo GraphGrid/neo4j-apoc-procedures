@@ -1,6 +1,5 @@
 package apoc.broker.logging;
 
-import apoc.util.FileUtils;
 import apoc.util.JsonUtil;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.google.common.collect.Lists;
@@ -15,7 +14,6 @@ import org.neo4j.kernel.internal.GraphDatabaseAPI;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -25,8 +23,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
+/**
+ * @author alexanderiudice
+ */
 public class BrokerLogger
 {
 
@@ -54,7 +53,7 @@ public class BrokerLogger
 
         public LogLine( String logLine )
         {
-            String[] splited = logLine.split("\\s+",5);
+            String[] splited = logLine.split( "\\s+", 5 );
 
             time = splited[0] + " " + splited[1];
             level = splited[2];
@@ -63,12 +62,10 @@ public class BrokerLogger
             {
                 logEntry = OBJECT_MAPPER.readValue( splited[4], LogEntry.class );
             }
-            catch( Exception e)
+            catch ( Exception e )
             {
-                logEntry = new LogEntry(  );
+                logEntry = new LogEntry();
             }
-
-
         }
 
         public String getTime()
@@ -120,13 +117,12 @@ public class BrokerLogger
             {
                 result += OBJECT_MAPPER.writeValueAsString( logEntry );
             }
-            catch ( Exception e)
+            catch ( Exception e )
             {
                 throw new RuntimeException( "Unable to write LogEntry as String" );
             }
             return result;
         }
-
 
         @JsonAutoDetect
         public static class LogEntry
@@ -137,9 +133,9 @@ public class BrokerLogger
 
             public LogEntry()
             {
-                connectionName  = "";
-                message = new HashMap<>(  );
-                configuration = new HashMap<>(  );
+                connectionName = "";
+                message = new HashMap<>();
+                configuration = new HashMap<>();
             }
 
             public LogEntry( String connectionName, Map<String,Object> message, Map<String,Object> configuration )
@@ -194,7 +190,8 @@ public class BrokerLogger
 
                 LogEntry logEntry = (LogEntry) o;
 
-                return new EqualsBuilder().append( connectionName, logEntry.connectionName ).append( message, logEntry.message ).append( configuration, logEntry.configuration ).isEquals();
+                return new EqualsBuilder().append( connectionName, logEntry.connectionName ).append( message, logEntry.message ).append( configuration,
+                        logEntry.configuration ).isEquals();
             }
 
             @Override
@@ -263,7 +260,6 @@ public class BrokerLogger
 
                 // Get the number of log file entries and set numLogEntries.
                 setNumLogEntries( calculateNumberOfLogEntries() );
-
             }
             catch ( Exception e )
             {
@@ -275,30 +271,32 @@ public class BrokerLogger
     public static Stream<List<LogLine.LogEntry>> batchConnectionMessages( String connectionName, int batchSize ) throws Exception
     {
 
-        Stream<String> stream = Files.lines( Paths.get(logFile.getPath()));
+        Stream<String> stream = Files.lines( Paths.get( logFile.getPath() ) );
 
         final Stream<LogLine.LogEntry> logEntryStream =
-                stream.map( LogLine::new ).filter( logLine -> logLine.logEntry.getConnectionName().equals( connectionName ) ).map( logLine -> logLine.getLogEntry() );
+                stream.map( LogLine::new ).filter( logLine -> logLine.logEntry.getConnectionName().equals( connectionName ) ).map(
+                        logLine -> logLine.getLogEntry() );
 
-        return Lists.partition(logEntryStream.collect( Collectors.toList()), batchSize).stream();
+        return Lists.partition( logEntryStream.collect( Collectors.toList() ), batchSize ).stream();
     }
 
     public static Stream<LogLine> streamLogLines() throws Exception
     {
-        return Files.lines( Paths.get(logFile.getPath())).map( LogLine::new );
+        return Files.lines( Paths.get( logFile.getPath() ) ).map( LogLine::new );
     }
 
-    public static Stream<LogLine> streamLogLines(String connectionName) throws Exception
+    public static Stream<LogLine> streamLogLines( String connectionName ) throws Exception
     {
-        return Files.lines( Paths.get(logFile.getPath())).map( LogLine::new ).filter( logLine -> logLine.logEntry.getConnectionName().equals( connectionName ) );
+        return Files.lines( Paths.get( logFile.getPath() ) ).map( LogLine::new ).filter(
+                logLine -> logLine.logEntry.getConnectionName().equals( connectionName ) );
     }
 
     public static Long calculateNumberOfLogEntries() throws Exception
     {
-        return Files.lines( Paths.get(logFile.getPath())).count();
+        return Files.lines( Paths.get( logFile.getPath() ) ).count();
     }
 
-    public static void removeLogLineBatch(List<LogLine> logLines)
+    public static void removeLogLineBatch( List<LogLine> logLines )
     {
         synchronized ( logFile )
         {
@@ -307,24 +305,23 @@ public class BrokerLogger
                 // Could this file cause race conditions?
                 File tmpFile = File.createTempFile( RandomStringUtils.randomAlphabetic( 5 ), ".log", logFile.getParentFile() );
 
-                DataOutputStream dataOutputStream= new DataOutputStream( new FileOutputStream( tmpFile ) );
+                DataOutputStream dataOutputStream = new DataOutputStream( new FileOutputStream( tmpFile ) );
 
-                streamLogLines().filter( (logLine) -> !logLines.contains( logLine )).forEach(
-                        logLine -> {
-                            try{
-                                dataOutputStream.write( logLine.getLogString().getBytes() );
-                                dataOutputStream.writeChars( System.getProperty( "line.separator" ) );
-                            }
-                            catch ( Exception e )
-                            {
-                                throw new RuntimeException( "Failure to remove LogLines. Failure to write LogLine to temp file." );
-                            }
-                        }
-                );
-                org.apache.commons.io.FileUtils.copyFile(tmpFile, logFile);
-                org.apache.commons.io.FileUtils.deleteQuietly(tmpFile);
+                streamLogLines().filter( ( logLine ) -> !logLines.contains( logLine ) ).forEach( logLine -> {
+                    try
+                    {
+                        dataOutputStream.write( logLine.getLogString().getBytes() );
+                        dataOutputStream.writeChars( System.getProperty( "line.separator" ) );
+                    }
+                    catch ( Exception e )
+                    {
+                        throw new RuntimeException( "Failure to remove LogLines. Failure to write LogLine to temp file." );
+                    }
+                } );
+                org.apache.commons.io.FileUtils.copyFile( tmpFile, logFile );
+                org.apache.commons.io.FileUtils.deleteQuietly( tmpFile );
 
-                numLogEntries.getAndAdd( (-1)*logLines.size() );
+                numLogEntries.getAndAdd( (-1) * logLines.size() );
             }
             catch ( Exception e )
             {
@@ -336,7 +333,6 @@ public class BrokerLogger
     public static Boolean IsAtThreshold()
     {
         return (numLogEntries.get() > retryThreshold);
-
     }
 
     public static void info( LogLine.LogEntry logEntry ) throws Exception
@@ -403,15 +399,13 @@ public class BrokerLogger
         return numLogEntries.getAndDecrement();
     }
 
-    public static Long setNumLogEntries(Long numLogEntries)
+    public static Long setNumLogEntries( Long numLogEntries )
     {
-        return BrokerLogger.numLogEntries.getAndSet(numLogEntries);
+        return BrokerLogger.numLogEntries.getAndSet( numLogEntries );
     }
 
     public static Long getNumLogEntries()
     {
         return numLogEntries.get();
     }
-
-
 }

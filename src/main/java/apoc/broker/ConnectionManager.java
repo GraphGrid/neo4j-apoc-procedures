@@ -3,20 +3,20 @@ package apoc.broker;
 import apoc.Pools;
 import org.neo4j.logging.Log;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
+/**
+ * @author alexanderiudice
+ */
 public class ConnectionManager
 {
-    static ExecutorService pool = Pools.DEFAULT;
-
     private ConnectionManager()
     {
     }
 
-    private static Map<String,BrokerConnection> brokerConnections = new ConcurrentHashMap<>( );
+    private static Map<String,BrokerConnection> brokerConnections = new ConcurrentHashMap<>();
 
     public static BrokerConnection addRabbitMQConnection( String connectionName, Log log, Map<String,Object> configuration )
     {
@@ -36,21 +36,22 @@ public class ConnectionManager
         return brokerConnections.put( connectionName, KafkaConnectionFactory.createConnection( connectionName, log, configuration ) );
     }
 
-    public static BrokerConnection getConnection(String connectionName)
+    public static BrokerConnection getConnection( String connectionName )
     {
         return brokerConnections.get( connectionName );
     }
 
-    public static Boolean doesExist(String connectionName)
+    public static Boolean doesExist( String connectionName )
     {
         return brokerConnections.containsKey( connectionName );
     }
 
-    public static void closeConnection(String connectionName){
+    public static void closeConnection( String connectionName )
+    {
         brokerConnections.get( connectionName ).stop();
     }
 
-    public static void updateConnection(final String connectionName, final BrokerConnection brokerConnection)
+    public static void updateConnection( final String connectionName, final BrokerConnection brokerConnection )
     {
         brokerConnections.put( connectionName, brokerConnection );
     }
@@ -59,6 +60,4 @@ public class ConnectionManager
     {
         brokerConnections.forEach( ( name, connection ) -> connection.stop() );
     }
-
-
 }

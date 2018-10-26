@@ -19,6 +19,9 @@ import java.util.function.Consumer;
 
 import static org.neo4j.io.file.Files.createOrOpenAsOuputStream;
 
+/**
+ * @author alexanderiudice
+ */
 public class BrokerLogService extends AbstractLogService implements Lifecycle
 {
 

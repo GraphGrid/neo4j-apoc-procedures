@@ -21,6 +21,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
+/**
+ * @author alexanderiudice
+ */
 public class SqsConnectionFactory implements ConnectionFactory
 {
 

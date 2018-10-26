@@ -8,6 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.Name;
 
+/**
+ * @author alexanderiudice
+ */
 public interface BrokerConnection
 {
     String maxPollRecordsDefault = "1";

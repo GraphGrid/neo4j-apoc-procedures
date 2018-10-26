@@ -2,6 +2,9 @@ package apoc.broker;
 
 import java.util.Map;
 
+/**
+ * @author alexanderiudice
+ */
 public class BrokerMessage
 {
     public String connectionName;
