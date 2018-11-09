@@ -904,8 +904,10 @@ public class TransactionDataMap
 
     public static String getNodeUidFromPreviousCommit( TransactionData tx, String uidKey, Long id )
     {
-        String result = StreamSupport.stream( tx.removedNodeProperties().spliterator(), true ).filter( ( p ) -> p.key().equals( uidKey ) ).filter(
-                ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() ).collect( Collectors.joining() );
+        String result = StreamSupport.stream( tx.removedNodeProperties().spliterator(), true )
+                .filter( ( p ) -> p.key().equals( uidKey ) )
+                .filter( ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() )
+                .collect( Collectors.joining() );
 
         return (result.isEmpty()) ? Long.toString( id ) : result;
     }
@@ -914,8 +916,10 @@ public class TransactionDataMap
 
     public static String getRelationshipUidFromPreviousCommit( TransactionData tx, String uidKey, Long id )
     {
-        String result = StreamSupport.stream( tx.removedRelationshipProperties().spliterator(), true ).filter( ( p ) -> p.key().equals( uidKey ) ).filter(
-                ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() ).collect( Collectors.joining() );
+        String result = StreamSupport.stream( tx.removedRelationshipProperties().spliterator(), true )
+                .filter( ( p ) -> p.key().equals( uidKey ) )
+                .filter( ( p ) -> p.entity().getId() == id ).map( ( p ) -> (String) p.previouslyCommitedValue() )
+                .collect( Collectors.joining() );
 
         return (result.isEmpty()) ? Long.toString( id ) : result;
     }

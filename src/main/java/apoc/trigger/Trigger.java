@@ -219,7 +219,10 @@ public class Trigger {
             triggers.forEach((name, data) -> {
                 Map<String, Object> params = txDataParams(txData, phase);
                 if( data.get("paused").equals(false)) {
-                    params.putAll( txDataCollector( txData, phase, (Map<String,Object>) data.get( "config" ) ) );
+                    if (phase.equals( "after" ))
+                    {
+                        params.putAll( txDataCollector( txData, phase, (Map<String,Object>) data.get( "config" ) ) );
+                    }
                     if( ( (Map<String,Object>) data.get( "config" )).get( "params" ) != null)
                     {
                         params.putAll( (Map<String,Object>) ((Map<String,Object>) data.get( "config" )).get( "params" ) );
