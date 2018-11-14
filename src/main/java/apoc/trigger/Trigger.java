@@ -299,6 +299,11 @@ public class Trigger {
 
                 tx.success();
             }
+            catch( Exception e )
+            {
+                log.error( e.getMessage() );
+                throw e;
+            }
 
             return map("txData", txDataMap );
         }

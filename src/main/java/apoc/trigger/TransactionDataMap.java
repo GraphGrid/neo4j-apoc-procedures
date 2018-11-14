@@ -510,9 +510,13 @@ public class TransactionDataMap
                 {
                     this.type = ARRAY_PREFIX + ".Boolean";
                 }
-                else if ( value instanceof Object[] )
+                else if ( value instanceof Object[] && ((Object[]) value).length > 0)
                 {
                     this.type = ARRAY_PREFIX + "." + (((Object[]) value)[0]).getClass().getSimpleName();
+                }
+                else
+                {
+                    this.type = ARRAY_PREFIX + ".Object";
                 }
             }
             this.action = action;
