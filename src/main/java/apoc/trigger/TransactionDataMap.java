@@ -10,6 +10,7 @@ import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.event.LabelEntry;
 import org.neo4j.graphdb.event.PropertyEntry;
 import org.neo4j.graphdb.event.TransactionData;
+import org.neo4j.logging.Log;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,7 +58,10 @@ public class TransactionDataMap
 
     }
 
-
+    // Logging
+    public static boolean loggingEnabled = false;
+    public static Log userLog;
+    public static String triggerName;
 
     public static Map<String,Map<String,Object>> updatedNodeMap( TransactionData tx, Iterable<Node> updatedNodes, String uidKey, ActionType actionType )
     {

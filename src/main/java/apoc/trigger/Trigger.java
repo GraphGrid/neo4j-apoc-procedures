@@ -311,6 +311,14 @@ public class Trigger {
 
             String uidKey = (String) config.getOrDefault( "uidKey", "" );
 
+            // Set logging to true/false
+            Boolean txDataLoggingEnabled = Boolean.getBoolean( (String) config.getOrDefault( "logging", "false" ) );
+            if (txDataLoggingEnabled)
+            {
+                TransactionDataMap.loggingEnabled = true;
+                TransactionDataMap.userLog = log;
+            }
+
             try ( Transaction tx = db.beginTx() )
             {
                 txDataMap.put( TRANSACTION_ID, phase.equals( "after" ) ? txData.getTransactionId() : -1 );
