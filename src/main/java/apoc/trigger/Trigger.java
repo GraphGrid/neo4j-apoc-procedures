@@ -315,6 +315,7 @@ public class Trigger {
             {
                 txDataMap.put( TRANSACTION_ID, phase.equals( "after" ) ? txData.getTransactionId() : -1 );
                 txDataMap.put( COMMIT_TIME, phase.equals( "after" ) ? txData.getCommitTime() : -1 );
+                txDataMap.put( METADATA, txData.metaData() );
 
                 txDataMap.put( CREATED_NODES, createdNodeMap(txData, uidKey ) );
                 txDataMap.put( CREATED_RELATIONSHIPS, createdRelationshipsMap( txData, uidKey ) );

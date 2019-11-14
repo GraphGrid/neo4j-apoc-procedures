@@ -33,6 +33,7 @@ public class TransactionDataMap
 
     public static final String TRANSACTION_ID = "transactionId";
     public static final String COMMIT_TIME = "commitTime";
+    public static final String METADATA = "metadata";
     public static final String CREATED_NODES = "createdNodes";
     public static final String CREATED_RELATIONSHIPS = "createdRelationships";
     public static final String DELETED_NODES = "deletedNodes";
